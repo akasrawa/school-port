@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% from '_macros.html' import empty, form_status %}
+{% block title %}{{ classroom.name }} · {{ t('app_name') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('teacher.classes') }}">← {{ t('nav_classes') }}</a>
+    <h1>{{ classroom.name }}</h1>
+    <p class="muted">{{ t('class_teacher') }}: {{ owner.name if owner else '-' }} · {{ t('class_code') }}: <code dir="ltr">{{ classroom.join_code }}</code></p>
+  </div>
+  <div class="inline-actions">
+    {% if manage_students %}
+    <a class="btn outline" href="{{ url_for('users.new', role='student', **{'class': classroom.id}) }}">{{ icon('plus', 16) }}{{ t('add_student') }}</a>
+    <a class="btn primary" href="{{ url_for('users.bulk', role='student', **{'class': classroom.id}) }}">{{ icon('users', 16) }}{{ t('bulk_students') }}</a>
+    {% endif %}
+  </div>
+</div>
+
+<section class="grid-2">
+  <div class="col-main">
+    <h2 class="section-title">{{ t('students') }} ({{ members|length }})</h2>
+    <div class="card table-card">
+      {% if not members %}{{ empty(t('no_students_yet')) }}{% else %}
+      <div class="table-wrap"><table class="table responsive">
+        <thead><tr><th>{{ t('col_name') }}</th><th>{{ t('username') }}</th><th>{{ t('exams_taken') }}</th><th>{{ t('average') }}</th><th></th></tr></thead>
+        <tbody>
+        {% for m in members %}
+          <tr class="{{ 'row-muted' if not m.active }}">
+            <td data-label="{{ t('col_name') }}"><b>{{ m.name }}</b></td>
+            <td data-label="{{ t('username') }}"><code dir="auto">{{ m.username }}</code></td>
+            <td data-label="{{ t('exams_taken') }}">{{ m.exams_taken }}</td>
+            <td data-label="{{ t('average') }}">{{ (fmt_num(m.avg_pct) ~ '%') if m.avg_pct is not none else '-' }}</td>
+            <td class="actions">
+              {% if manage_students %}
+              <a class="btn sm outline" href="{{ url_for('users.edit', uid=m.id) }}">{{ icon('edit', 14) }}<span class="hide-sm">{{ t('edit') }}</span></a>
+              <form method="post" action="{{ url_for('users.reset', uid=m.id) }}" data-confirm="{{ t('confirm_reset_password') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ request.path }}">
+                <button class="btn sm ghost" type="submit" title="{{ t('reset_password') }}">{{ icon('key', 14) }}</button></form>
+              {% endif %}
+              <form method="post" action="{{ url_for('teacher.remove_student', cid=classroom.id, sid=m.id) }}" data-confirm="{{ t('confirm_remove_student') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn sm ghost danger-text" type="submit" aria-label="{{ t('remove') }}" title="{{ t('remove_from_class') }}">{{ icon('x', 14) }}</button></form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% endif %}
+    </div>
+  </div>
+  <aside class="col-side">
+    <h2 class="section-title">{{ t('assigned_exams') }}</h2>
+    <div class="card">
+      {% if not forms %}{{ empty(t('no_exams_assigned')) }}{% endif %}
+      <ul class="feed">
+        {% for f in forms %}<li><a href="{{ url_for('teacher.submissions', fid=f.id) }}"><b>{{ f.title }}</b></a>{{ form_status(f.status) }}</li>{% endfor %}
+      </ul>
+    </div>
+    <h2 class="section-title">{{ t('class_settings') }}</h2>
+    <form class="card" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field"><span>{{ t('class_name') }}</span><input type="text" name="name" maxlength="100" value="{{ classroom.name }}"></label>
+      {% if is_admin %}
+      <label class="field"><span>{{ t('class_teacher') }}</span>
+        <select name="teacher_id">{% for tch in teachers %}<option value="{{ tch.id }}" {{ 'selected' if tch.id == classroom.teacher_id }}>{{ tch.name }}</option>{% endfor %}</select></label>
+      <fieldset class="fieldset"><legend>{{ t('co_teachers') }}</legend>
+        {% for tch in teachers if tch.id != classroom.teacher_id %}
+        <label class="check"><input type="checkbox" name="co_teachers" value="{{ tch.id }}" {{ 'checked' if tch.id in co }}><span>{{ tch.name }}</span></label>
+        {% endfor %}
+        <small class="muted">{{ t('co_teachers_hint') }}</small>
+      </fieldset>
+      {% endif %}
+      <button class="btn outline block" type="submit">{{ t('save') }}</button>
+    </form>
+    {% if is_admin or classroom.teacher_id == user.id %}
+    <form method="post" action="{{ url_for('teacher.delete_class', cid=classroom.id) }}" data-confirm="{{ t('confirm_delete_class') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn ghost danger-text sm" type="submit">{{ icon('trash', 14) }}{{ t('delete_class') }}</button>
+    </form>
+    {% endif %}
+  </aside>
+</section>
+{% endblock %}
