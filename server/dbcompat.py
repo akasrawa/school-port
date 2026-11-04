@@ -18,7 +18,10 @@ ID_TABLES = {
 _INSERT_RE = re.compile(r"^\s*INSERT\s+(?:OR\s+IGNORE\s+)?INTO\s+([A-Za-z_]+)", re.I)
 
 
-def translate(sql, has_params=True):
+_NAMED_RE = re.compile(r"(?<![:\w]):([A-Za-z_]\w*)")
+
+
+def translate(sql, has_params=True, named=False):
     """SQLite dialect -> PostgreSQL dialect (only the constructs this project uses)."""
     s = sql
     ignore = bool(re.search(r"INSERT\s+OR\s+IGNORE\s+INTO", s, re.I))
@@ -35,7 +38,11 @@ def translate(sql, has_params=True):
     if m and m.group(1).lower() in ID_TABLES and not re.search(r"\bRETURNING\b", s, re.I):
         s += " RETURNING id"
     if has_params:
-        s = s.replace("%", "%%").replace("?", "%s")
+        s = s.replace("%", "%%")
+        if named:  # sqlite ":name" -> psycopg "%(name)s"
+            s = _NAMED_RE.sub(lambda m: "%%(%s)s" % m.group(1), s)
+        else:
+            s = s.replace("?", "%s")
     return s
 
 
@@ -109,8 +116,9 @@ class PGConnection:
     def execute(self, sql, params=()):
         if sql.lstrip().upper().startswith("PRAGMA"):
             return Cursor()
-        params = tuple(params or ())
-        translated = translate(sql, bool(params))
+        named = isinstance(params, dict)
+        params = dict(params) if named else tuple(params or ())
+        translated = translate(sql, bool(params), named)
         raw = self._raw.execute(translated, params) if params else self._raw.execute(translated)
         cur = Cursor(raw)
         if "RETURNING id" in translated and translated.endswith("RETURNING id"):
