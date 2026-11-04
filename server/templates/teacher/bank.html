@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}{{ t('bank_title') }} · {{ t('app_name') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ icon('bookmark', 24) }} {{ t('bank_title') }}</h1>
+    <p class="muted">{{ t('bank_sub') }}</p>
+  </div>
+  <details class="menu">
+    <summary class="btn outline">{{ icon('plus', 16) }}{{ t('bank_import_exam') }}</summary>
+    <div class="menu-pop wide">
+      {% for f in forms %}
+      <form method="post" action="{{ url_for('teacher.bank_add_form', fid=f.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ request.full_path }}">
+        <button type="submit" dir="auto">{{ icon('file', 14) }}{{ f.title }} <small class="muted inline">({{ f.qcount }})</small></button></form>
+      {% else %}<span class="muted small">{{ t('no_exams_yet') }}</span>{% endfor %}
+    </div>
+  </details>
+</div>
+
+<form class="card filter-bar" method="get" role="search">
+  <label class="search-box grow">{{ icon('search', 18) }}<input type="search" name="q" value="{{ q }}" placeholder="{{ t('bank_search_ph') }}"></label>
+  <select name="type" onchange="this.form.submit()" aria-label="{{ t('col_type') }}">
+    <option value="">{{ t('all_types') }}</option>
+    {% for ty in types if ty != 'section' %}<option value="{{ ty }}" {{ 'selected' if type == ty }}>{{ t('type_' + ty) }}</option>{% endfor %}
+  </select>
+  {% if subjects %}<select name="subject" onchange="this.form.submit()" aria-label="{{ t('subject') }}"><option value="">{{ t('all_subjects') }}</option>{% for s in subjects %}<option {{ 'selected' if subject == s }}>{{ s }}</option>{% endfor %}</select>{% endif %}
+  {% if grades %}<select name="grade" onchange="this.form.submit()" aria-label="{{ t('grade') }}"><option value="">{{ t('all_grades') }}</option>{% for s in grades %}<option {{ 'selected' if grade == s }}>{{ s }}</option>{% endfor %}</select>{% endif %}
+  <label class="check" style="margin:0"><input type="checkbox" name="mine" value="1" {{ 'checked' if mine }} onchange="this.form.submit()"><span>{{ t('bank_mine') }}</span></label>
+  <button class="btn primary" type="submit">{{ icon('search', 16) }}<span class="hide-sm">{{ t('search') }}</span></button>
+</form>
+
+<form method="post" action="{{ url_for('teacher.bank_use') }}" id="bank-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card bank-bar">
+    <label class="check" style="margin:0"><input type="checkbox" data-check-all="ids"><span>{{ t('select_all') }}</span></label>
+    <span class="muted small"><b data-check-count>0</b> {{ t('selected') }} · {{ t('n_results', n=items|length) }}</span>
+    <span class="spacer"></span>
+    <select name="fid" id="bank-target" aria-label="{{ t('xl_target') }}">
+      <option value="">{{ t('xl_new_exam') }}</option>
+      {% for f in forms %}<option value="{{ f.id }}">{{ f.title }}</option>{% endfor %}
+    </select>
+    <input type="text" name="title" id="bank-title" maxlength="200" placeholder="{{ t('exam_title') }}">
+    <button class="btn primary" type="submit">{{ icon('plus', 16) }}{{ t('bank_use_selected') }}</button>
+  </div>
+
+  {% if not items %}<div class="card empty">{{ t('bank_empty') if not total else t('bank_none_found') }}</div>{% endif %}
+  <div class="bank-list">
+  {% for it in items %}
+    {% set b = it.row %}{% set q = it.q %}
+    <label class="card bank-item">
+      <input type="checkbox" name="ids" value="{{ b.id }}" class="bank-check">
+      <div class="bank-body">
+        <div class="bank-meta">
+          <span class="badge blue">{{ t('type_' + q.type) }}</span>
+          {% if q.points %}<span class="badge gray">{{ fmt_num(q.points) }} {{ t('points') }}</span>{% endif %}
+          {% if b.subject %}<span class="badge green">{{ b.subject }}</span>{% endif %}
+          {% if b.grade %}<span class="badge green">{{ b.grade }}</span>{% endif %}
+          {% if q.image %}<span class="badge gray">{{ icon('image', 12) }}</span>{% endif %}
+          {% if q.audio %}<span class="badge gray">♪</span>{% endif %}
+          {% if not b.shared %}<span class="badge amber">{{ t('bank_private') }}</span>{% endif %}
+          <span class="muted small">{{ b.owner_name or '' }}{% if b.uses %} · {{ t('bank_used_n', n=b.uses) }}{% endif %}</span>
+        </div>
+        <div class="bank-text" dir="auto">{{ q.text | rich }}</div>
+        {% if q.type in ['mcq', 'checkbox', 'dropdown'] %}
+          <div class="bank-opts" dir="auto">{% for o in q.options %}<span class="{{ 'ok' if (q.correct == loop.index0) or (q.correct is iterable and q.correct is not string and loop.index0 in q.correct) }}">{{ o }}</span>{% endfor %}</div>
+        {% elif it.answer %}
+          <div class="bank-answer small" dir="auto">✓ {{ it.answer }}</div>
+        {% endif %}
+      </div>
+      {% if q.image %}<img class="bank-img" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}
+    </label>
+    {% if is_admin or b.owner_id == user.id %}
+    <div class="bank-tools">
+      <button class="btn sm ghost" type="submit" form="share-{{ b.id }}">{{ t('bank_make_private') if b.shared else t('bank_make_shared') }}</button>
+      <button class="btn sm ghost danger-text" type="submit" form="del-{{ b.id }}">{{ icon('trash', 14) }}</button>
+    </div>
+    {% endif %}
+  {% endfor %}
+  </div>
+</form>
+{% for it in items %}{% set b = it.row %}{% if is_admin or b.owner_id == user.id %}
+<form id="del-{{ b.id }}" method="post" action="{{ url_for('teacher.bank_delete', bid=b.id) }}" data-confirm="{{ t('confirm_delete_question') }}" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+<form id="share-{{ b.id }}" method="post" action="{{ url_for('teacher.bank_share', bid=b.id) }}" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+{% endif %}{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var s = document.getElementById('bank-target'), title = document.getElementById('bank-title');
+    s.addEventListener('change', function () { title.hidden = !!s.value; });
+  });
+</script>
+{% endblock %}
