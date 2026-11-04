@@ -8,6 +8,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .access import is_admin, own_form
+from .arabicfix import fix_pdf_arabic
 from .db import get_db
 from .grading import regrade_form
 from .i18n import current_lang, t
@@ -116,7 +117,7 @@ def _cell(value):
         return ""
     if isinstance(value, float) and value.is_integer():
         value = int(value)
-    return str(value).strip()
+    return fix_pdf_arabic(str(value)).strip()
 
 
 def _letter_index(token, options):
