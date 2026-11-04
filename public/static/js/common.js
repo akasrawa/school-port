@@ -38,6 +38,62 @@
 
   window.App = { toast: toast, api: api, csrf: csrf };
 
+  // ---- Arabic copied from PDF files -------------------------------------------------------
+  // Many PDFs keep Arabic as presentation-form glyphs in visual (reversed) order; when pasted the
+  // letters appear disconnected and backwards. Convert such text to normal Arabic on paste.
+  // (Same logic as server/arabicfix.py.)
+  var PRES = /[ﭐ-﷿ﹰ-﻾]/;
+  var PRES_G = /[ﭐ-ﷹ﷼-﷿ﹰ-﻾]/g;
+  var LTR_RUN = /[0-9A-Za-z٠-٩۰-۹]+(?:[.,:\/\-][0-9A-Za-z٠-٩۰-۹]+)*/g;
+  var MIRROR = { "(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{", "<": ">", ">": "<", "«": "»", "»": "«" };
+
+  function normalizeForms(text) {
+    return text.replace(PRES_G, function (c) { return c.normalize ? c.normalize("NFKC") : c; });
+  }
+  function looksReversed(text) {
+    var words = text.match(/[ء-ي]{3,}/g) || [];
+    var starts = 0, ends = 0;
+    words.forEach(function (w) {
+      if (/^[وفبك]?ال/.test(w)) starts++;
+      if (/لا[وفبك]?$/.test(w)) ends++;
+    });
+    return ends > starts;
+  }
+  function reverseLine(line) {
+    var out = Array.from(line).reverse().join("");
+    out = out.replace(LTR_RUN, function (run) { return Array.from(run).reverse().join(""); });
+    return out.replace(/[()\[\]{}<>«»]/g, function (c) { return MIRROR[c]; });
+  }
+  function fixPdfArabic(text) {
+    if (!text || !PRES.test(text)) return text;
+    text = text.replace(/﻿/g, "");
+    if (looksReversed(normalizeForms(text))) {
+      text = text.split("\n").map(reverseLine).join("\n");
+    }
+    return normalizeForms(text);
+  }
+  window.App.fixPdfArabic = fixPdfArabic;
+
+  document.addEventListener("paste", function (event) {
+    var el = event.target;
+    if (!el || !(el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && /^(text|search|)$/.test(el.type || "")))) return;
+    var data = event.clipboardData || window.clipboardData;
+    if (!data) return;
+    var text = data.getData("text/plain") || data.getData("text");
+    var fixed = fixPdfArabic(text);
+    if (fixed === text) return;
+    event.preventDefault();
+    var done = false;
+    try { done = document.execCommand("insertText", false, fixed); } catch (e) { done = false; }
+    if (!done) {
+      var start = el.selectionStart || 0, end = el.selectionEnd || 0;
+      el.setRangeText(fixed, start, end, "end");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    var ar = (document.documentElement.lang || "ar").indexOf("ar") === 0;
+    toast(ar ? "تم إصلاح النص العربي المنسوخ من ملف PDF" : "Arabic text copied from a PDF was repaired");
+  }, true);
+
   function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
     var area = document.createElement("textarea");
