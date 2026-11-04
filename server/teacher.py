@@ -29,6 +29,7 @@ from .access import (
     own_form,
     visible_classes,
 )
+from .arabicfix import fix_pdf_strings
 from .db import get_db
 from .grading import (
     AUTO,
@@ -498,7 +499,7 @@ def clean_question(raw):
 @login_required("staff")
 def api_save(fid):
     own_form(fid)
-    data = request.get_json(silent=True) or {}
+    data = fix_pdf_strings(request.get_json(silent=True) or {})
     settings = clean_settings(data.get("settings") or {})
     raw_questions = data.get("questions") or []
     if not isinstance(raw_questions, list) or len(raw_questions) > 200:
