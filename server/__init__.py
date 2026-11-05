@@ -9,7 +9,7 @@ from markupsafe import Markup, escape
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .db import close_db, get_db, init_db
-from .grading import answer_text, correct_text
+from .grading import answer_text, correct_text, is_manual
 from .i18n import current_lang, t
 from .utils import fmt_num, jl, pct, safe_next
 
@@ -174,8 +174,32 @@ def create_app():
         t=t, fmt_num=fmt_num, pct=pct, answer_text=answer_text, correct_text=correct_text, csrf_token=csrf_token,
         media_url=lambda name: url_for("exam.media", name=name) if name else "",
         setting_flag=_flag,
-        fill_bank_words=_fill_bank_words, fill_ok=_fill_ok, fill_answer=_fill_answer,
+        fill_bank_words=_fill_bank_words, fill_ok=_fill_ok, fill_answer=_fill_answer, is_manual=is_manual,
     )
+
+    class _OwnerTeachers:
+        """Teachers an admin can pick as an exam's owner (loaded only when a page uses the list)."""
+
+        def _rows(self):
+            if "_owner_teachers" not in g:
+                from .db import get_db
+
+                g._owner_teachers = get_db().execute(
+                    "SELECT id, name FROM users WHERE role IN ('teacher','admin') AND active=1 ORDER BY name"
+                ).fetchall()
+            return g._owner_teachers
+
+        def __iter__(self):
+            return iter(self._rows())
+
+        def __bool__(self):
+            return bool(self._rows())
+
+    @app.context_processor
+    def inject_owner_teachers():
+        if g.get("user") and g.user["role"] == "admin":
+            return {"owner_teachers": _OwnerTeachers()}
+        return {"owner_teachers": None}
 
     @app.context_processor
     def inject():

@@ -150,7 +150,7 @@
     {% endif %}
 
     {% for it in s['items'] %}
-    {% set q = it.q %}{% set v = it.value %}{% set a = it.answer %}
+    {% set q = it.q %}{% set v = it.value %}{% set a = it.answer %}{% set qkey = show_key and not is_manual(q) %}{% set qmark = attempt and not is_manual(q) %}
     <div class="q">
       <div class="q-line">
         {% if not it.numbered %}<span class="n">{{ it.n }}.</span>{% endif %}
@@ -166,27 +166,27 @@
       {% if q.type in ['mcq', 'dropdown', 'checkbox'] %}
         <div class="opts" dir="auto">
         {% for o in q.options %}
-          {% set is_key = show_key and ((q.type != 'checkbox' and q.correct == loop.index0) or (q.type == 'checkbox' and q.correct and loop.index0 in q.correct)) %}
+          {% set is_key = qkey and ((q.type != 'checkbox' and q.correct == loop.index0) or (q.type == 'checkbox' and q.correct and loop.index0 in q.correct)) %}
           {% set picked = attempt and v is not none and ((q.type != 'checkbox' and v == loop.index0) or (q.type == 'checkbox' and v and loop.index0 in v)) %}
-          <span class="opt {{ 'key' if is_key }} {{ 'picked' if picked }} {{ 'wrong' if picked and not is_key }}"><span class="c">{{ L[loop.index0] if loop.index0 < L|length else loop.index }}</span>{{ o | rich }}</span>
+          <span class="opt {{ 'key' if is_key }} {{ 'picked' if picked }} {{ 'wrong' if picked and qmark and not is_key }}"><span class="c">{{ L[loop.index0] if loop.index0 < L|length else loop.index }}</span>{{ o | rich }}</span>
         {% endfor %}
         </div>
       {% elif q.type == 'truefalse' %}
         <div class="opts">
           {% if attempt %}<span>{{ t('student_answer') }}: <span class="tf">{{ '✓' if v == 'true' else ('✗' if v == 'false' else '') }}</span></span>{% endif %}
-          {% if show_key %}<span class="key-ans">{{ t('correct_answer') }}: <span class="tf">{{ '✓' if q.correct == 'true' else '✗' }}</span></span>
+          {% if qkey %}<span class="key-ans">{{ t('correct_answer') }}: <span class="tf">{{ '✓' if q.correct == 'true' else '✗' }}</span></span>
           {% elif not attempt %}<span class="tf">&nbsp;</span>{% endif %}
         </div>
       {% elif q.type == 'fill' %}
         {% if q.options and q.options.bank %}
           <div class="bank" dir="auto">{% for w in fill_bank_words(q) %}<span>{{ w }}</span>{% endfor %}</div>
         {% endif %}
-        <div class="fill" dir="auto">{% for p in it.parts %}{% if p.blank is defined %}{% set given = v[p.blank] if v and p.blank < v|length else '' %}<span class="blank {{ ('ok' if fill_ok(q, p.blank, given) else 'bad') if attempt }}">{% if attempt %}{{ given or ' ' }}{% elif show_key %}<span class="key-ans">{{ fill_answer(q, p.blank) }}</span>{% else %}&nbsp;{% endif %}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
-        {% if attempt and show_key %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
+        <div class="fill" dir="auto">{% for p in it.parts %}{% if p.blank is defined %}{% set given = v[p.blank] if v and p.blank < v|length else '' %}<span class="blank {{ ('ok' if fill_ok(q, p.blank, given) else 'bad') if qmark }}">{% if attempt %}{{ given or ' ' }}{% elif qkey %}<span class="key-ans">{{ fill_answer(q, p.blank) }}</span>{% else %}&nbsp;{% endif %}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
+        {% if attempt and qkey %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
       {% elif q.type == 'order' %}
         <div class="chunks" dir="auto">{% for c in it.chunks %}<span>{{ c }}</span>{% endfor %}</div>
         {% if attempt %}<div class="wline ans" dir="auto">{{ v or '' }}</div>{% else %}<div class="wline"></div>{% endif %}
-        {% if show_key %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
+        {% if qkey %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
       {% elif q.type == 'match' %}
         <table class="match" dir="auto">
           {% set rows = [it.pairs|length, it.choices|length] | max %}
@@ -196,7 +196,7 @@
               {% set right = it.pairs[i][1] %}
               {% set given = v[i] if v and i < v|length else '' %}
               <td>{{ i + 1 }}- {{ it.pairs[i][0] | rich }}</td>
-              <td class="box">{% if attempt %}<span class="{{ 'key-ans' if given == right else 'got bad' }}">{{ R[it.choices.index(given)] if given in it.choices else '' }}</span>{% elif show_key %}<span class="key-ans">{{ R[it.choices.index(right)] }}</span>{% endif %}</td>
+              <td class="box">{% if attempt %}<span class="{{ ('key-ans' if given == right else 'got bad') if qmark else 'got' }}">{{ R[it.choices.index(given)] if given in it.choices else '' }}</span>{% elif qkey %}<span class="key-ans">{{ R[it.choices.index(right)] }}</span>{% endif %}</td>
             {% else %}<td></td><td class="box"></td>{% endif %}
             <td>{% if i < it.choices|length %}{{ R[i] }}) {{ it.choices[i] | rich }}{% endif %}</td>
           </tr>
@@ -204,7 +204,7 @@
         </table>
       {% elif q.type in ['short', 'number'] %}
         {% if attempt %}<div class="wline ans" dir="auto">{{ answer_text(q, v) }}</div>{% else %}<div class="wline"></div>{% endif %}
-        {% if show_key %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
+        {% if qkey %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
       {% elif q.type == 'paragraph' %}
         {% if attempt %}<div class="wline ans" dir="auto">{{ v or '' }}</div>
         {% else %}<div class="wline"></div><div class="wline"></div><div class="wline"></div>{% endif %}
@@ -213,9 +213,6 @@
         {% else %}<div class="ruled"></div>{% endif %}
       {% elif q.type == 'file' %}
         <div class="desc">{{ (a.file_name if attempt and a and a.file_name else t('print_file_note')) }}</div>
-      {% endif %}
-      {% if show_key and q.type in ['paragraph', 'draw', 'file'] and correct_text(q) %}
-        <div class="desc key-ans" dir="auto">✓ {{ correct_text(q) }}</div>
       {% endif %}
       {% if q.type == 'scale' %}
         <div class="opts">{% for n in range(1, (q.options.max if q.options else 5) + 1) %}<span class="opt"><span class="c">{{ n }}</span></span>{% endfor %}</div>

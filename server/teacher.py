@@ -496,8 +496,6 @@ def clean_question(raw):
 
         if not fill_blanks({"options": out["options"]}):
             raise ValueError(t("err_fill_blanks"))
-    if kind in ("paragraph", "file", "draw") and isinstance(correct, str) and correct.strip():
-        out["correct"] = correct.strip()[:3000]  # model answer, shown to the teacher and in the answer key
     return out
 
 

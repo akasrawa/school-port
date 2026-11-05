@@ -66,9 +66,7 @@
         {% endif %}
       </div>
       {% set ct = correct_text(q) %}
-      {% if q.type in ['paragraph', 'file', 'draw'] %}
-        {% if ct %}<div class="answer-box correct"><span class="muted small">{{ t('model_answer') }}</span><div class="answer-text" dir="auto">{{ ct }}</div></div>{% endif %}
-      {% elif q.type not in ['scale', 'date', 'section'] %}
+      {% if not is_manual(q) and q.type not in ['scale', 'date', 'section'] %}
       <div class="answer-box correct">
         <span class="muted small">{{ t('correct_answer') }}</span>
         <div class="answer-text" dir="auto">{{ ct if ct else t('no_key') }}</div>

@@ -10,7 +10,7 @@ EXTRA = {
     "grading_mode": ("Grading", "التصحيح"),
     "grading_auto": ("Automatic", "آلي"),
     "grading_manual": ("Manual", "يدوي"),
-    "manual_key_hint": ("Graded by the teacher. The correct answer you set is shown while grading, in the printed answer key and in the student's review.", "يصححه المعلم يدويًا، وتظهر الإجابة الصحيحة التي حددتِها أثناء التصحيح وفي ورقة الإجابة المطبوعة وفي مراجعة إجابات الطالب."),
+    "manual_key_hint": ("Graded by the teacher: no correct answer is needed, and none is shown while grading, in print or in the student's review.", "يصححه المعلم يدويًا: لا حاجة لتحديد إجابة صحيحة، ولا تظهر إجابة صحيحة عند التصحيح أو الطباعة أو في مراجعة الطالب."),
     # ---- v2.2
     "match_tap_hint": ("Tap an item, then tap its match below. Tap a filled answer again to clear it.", "اضغط على العبارة، ثم اضغط على ما يناسبها من البطاقات بالأسفل. اضغط الإجابة مرة أخرى لمسحها."),
     "match_slot_empty": ("Tap to choose…", "اضغط للاختيار…"),

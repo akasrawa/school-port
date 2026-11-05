@@ -483,3 +483,9 @@ section.grid-2 > .card:only-child, .grid-2 > .card { margin: 0; }
 
 .owner-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.65rem; border-radius: 999px; background: var(--blue-soft); font-size: 0.85rem; white-space: nowrap; }
 .table-card .pad { padding: 0.6rem 1rem 0; margin: 0; }
+
+/* Manually graded questions: no correct answer is chosen or shown */
+.qcard.no-key .key-only, .qcard.no-key .opt-line .pick { display: none; }
+.qcard.no-key .opt-line.correct input[type="text"] { border-color: var(--line-strong); background: transparent; }
+.owner-pick { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.35rem 0.2rem 0.6rem; border-radius: 999px; background: var(--blue-soft); font-size: 0.85rem; white-space: nowrap; }
+.owner-pick select { border: 0; background: transparent; font: inherit; font-weight: 700; padding: 0.15rem 0.2rem; max-width: 12rem; cursor: pointer; }

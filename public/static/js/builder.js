@@ -159,6 +159,7 @@
   function cardClass(q) {
     var base = "card qcard t-" + q.type + (q._collapsed ? " collapsed" : "");
     if (q.type === "section") return base + " section";
+    if (GRADED.indexOf(q.type) !== -1 && q.manual_grade) return base + " manual no-key";
     if (UNSCORED.indexOf(q.type) !== -1) return base + " info";
     if (MANUAL.indexOf(q.type) !== -1 || q.manual_grade) return base + " manual";
     return base;
@@ -253,7 +254,7 @@
 
   function renderTrueFalse(q, hint) {
     var name = "tf-" + (q._k || (q._k = Math.random().toString(36).slice(2)));
-    var box = h("div", { class: "tf-pick", role: "radiogroup", "aria-label": T.correct_answer });
+    var box = h("div", { class: "tf-pick key-only", role: "radiogroup", "aria-label": T.correct_answer });
     ["true", "false"].forEach(function (value) {
       var input = h("input", {
         type: "radio", name: name, value: value, checked: q.correct === value,
@@ -276,7 +277,7 @@
       }
     });
     area.value = Array.isArray(q.correct) ? q.correct.join("\n") : "";
-    return h("div", { class: "q-fields" }, [
+    return h("div", { class: "q-fields key-only" }, [
       h("label", { class: "field" }, [h("span", { text: T.accepted_answers }), area, h("small", { class: "muted", text: T.accepted_answers_hint })])
     ]);
   }
@@ -292,7 +293,7 @@
     }
     value.addEventListener("input", sync);
     tol.addEventListener("input", sync);
-    return h("div", { class: "row-2" }, [
+    return h("div", { class: "row-2 key-only" }, [
       h("label", { class: "field" }, [h("span", { text: T.numeric_answer }), value]),
       h("label", { class: "field" }, [h("span", { text: T.tolerance }), tol])
     ]);
@@ -599,12 +600,7 @@
     if (q.type === "paragraph") fields.appendChild(h("p", { class: "q-hint", text: T.manual_grade_note }));
     if (GRADED.indexOf(q.type) !== -1 && q.manual_grade) fields.appendChild(h("p", { class: "q-hint warn", text: T.manual_key_hint }));
     if (q.type === "file") fields.appendChild(h("p", { class: "q-hint", text: T.file_upload_note }));
-    if (MANUAL.indexOf(q.type) !== -1) {
-      var model = h("textarea", { rows: "2", maxlength: "3000", dir: "auto", class: "model-answer", placeholder: T.model_answer_ph, "aria-label": T.model_answer,
-        oninput: function () { q.correct = model.value; touch(); } });
-      model.value = typeof q.correct === "string" ? q.correct : "";
-      fields.appendChild(h("label", { class: "field" }, [h("span", { text: T.model_answer }), model]));
-    }
+
     if (q.type === "draw") {
       var linesBox = h("input", { type: "checkbox", onchange: function () { q.options.lines = linesBox.checked; touch(); } });
       linesBox.checked = q.options.lines !== false;

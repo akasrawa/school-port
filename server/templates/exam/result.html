@@ -61,7 +61,7 @@
       </div>
       {% if q.type not in ['scale', 'date', 'section'] %}
         {% set ct = correct_text(q) %}
-        {% if ct %}<div class="answer-box correct"><span class="muted small">{{ t('model_answer') if q.type in ['paragraph', 'file', 'draw'] else t('correct_answer') }}</span><div class="answer-text" dir="auto">{{ ct }}</div></div>{% endif %}
+        {% if ct %}<div class="answer-box correct"><span class="muted small">{{ t('correct_answer') }}</span><div class="answer-text" dir="auto">{{ ct }}</div></div>{% endif %}
       {% endif %}
       {% if q.explanation %}<div class="explain">{{ icon('book', 14) }} {{ q.explanation }}</div>{% endif %}
       {% if a and a.feedback %}<div class="explain teacher">{{ icon('user', 14) }} {{ a.feedback }}</div>{% endif %}
