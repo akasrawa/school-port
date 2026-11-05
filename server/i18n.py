@@ -175,7 +175,7 @@ TEXT = {
     "add_question": ("Add question", "إضافة سؤال"),
     "question_n": ("Question {n}", "السؤال {n}"),
     "question_text": ("Question", "نص السؤال"),
-    "question_help": ("Help text (optional)", "نص مساعد (اختياري)"),
+    "question_help": ("Hint (optional)", "التلميح (اختياري)"),
     "option_n": ("Option {n}", "الخيار {n}"),
     "add_option": ("Add option", "إضافة خيار"),
     "move_up": ("Move up", "نقل لأعلى"),

@@ -204,6 +204,7 @@ small { display: block; }
 .stat.blue .stat-icon { background: var(--blue-soft); color: var(--blue); }
 .stat.green .stat-icon { background: var(--green-soft); color: var(--green); }
 .stat.red .stat-icon { background: var(--red-soft); color: var(--red); }
+.stat.amber .stat-icon { background: var(--amber-soft); color: #b45309; }
 .grid-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; margin-block-end: 1rem; }
 section.grid-2 > .card:only-child, .grid-2 > .card { margin: 0; }
 .exam-list { display: grid; gap: 0.75rem; }
@@ -295,6 +296,9 @@ section.grid-2 > .card:only-child, .grid-2 > .card { margin: 0; }
 .answer-text { white-space: pre-wrap; word-break: break-word; font-weight: 600; }
 .explain { display: flex; gap: 0.5rem; align-items: flex-start; background: var(--blue-soft); color: var(--blue-dark); border-radius: 10px; padding: 0.55rem 0.85rem; margin-block-end: 0.5rem; font-size: 0.92rem; }
 .explain.teacher { background: var(--amber-soft); color: #7c2d12; }
+.explain.hint { background: var(--gray-soft); color: inherit; }
+.explain.hint b { font-weight: 700; }
+.explain svg { flex: none; margin-top: 0.2em; }
 .grade-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-block-end: 0.7rem; }
 .grade-row input { width: 110px; }
 .quick { display: flex; gap: 0.35rem; }
@@ -476,3 +480,6 @@ section.grid-2 > .card:only-child, .grid-2 > .card { margin: 0; }
   * { animation: none !important; transition: none !important; }
 }
 @media print { .topbar, .footer, .sticky-bar { display: none; } }
+
+.owner-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.65rem; border-radius: 999px; background: var(--blue-soft); font-size: 0.85rem; white-space: nowrap; }
+.table-card .pad { padding: 0.6rem 1rem 0; margin: 0; }

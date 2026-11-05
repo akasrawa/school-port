@@ -108,7 +108,8 @@ def change_owner(fid):
 
 
 # ----------------------------------------------------------------- settings
-BOOL_SETTINGS = ["allow_student_signup", "allow_teacher_signup", "teachers_excel_import", "teachers_manage_students"]
+BOOL_SETTINGS = ["allow_student_signup", "allow_teacher_signup", "teachers_excel_import", "teachers_manage_students",
+                 "default_manual_grade"]
 
 
 @bp.route("/settings", methods=["GET", "POST"])

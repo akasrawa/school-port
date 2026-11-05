@@ -138,6 +138,8 @@ def has_key(q):
         return bool(fill_blanks(q))
     if kind == "order":
         return bool(correct)
+    if kind in MANUAL:  # optional model answer for essay / file / drawing questions
+        return isinstance(correct, str) and bool(correct.strip())
     return False
 
 
@@ -348,6 +350,8 @@ def correct_text(q):
         if correct.get("tolerance"):
             text += " ± " + str(correct["tolerance"])
         return text
+    if kind in MANUAL:
+        return correct.strip()
     return ""
 
 

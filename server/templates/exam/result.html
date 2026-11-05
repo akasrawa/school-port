@@ -46,6 +46,7 @@
         {% elif it.max > 0 %}<span class="badge gray">{{ t('status_pending') }}</span>{% endif %}
       </header>
       <h3 class="q-text" dir="auto">{{ q.text | rich }}</h3>
+      {% if q.description and q.description.strip() %}<div class="explain hint" dir="auto">{{ icon('bulb', 14) }}<span><b>{{ t('hint_label') }}:</b> {{ q.description | rich }}</span></div>{% endif %}
       {% if q.image %}<img class="q-img sm" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}{% if q.audio %}<audio class="q-audio" controls preload="none" src="{{ media_url(q.audio) }}"></audio>{% endif %}
       <div class="answer-box">
         <span class="muted small">{{ t('student_answer') }}</span>
@@ -58,9 +59,9 @@
           <div class="answer-text" dir="auto">{{ txt if txt else t('no_answer') }}</div>
         {% endif %}
       </div>
-      {% if q.type not in ['paragraph', 'file', 'draw', 'scale', 'date', 'section'] %}
+      {% if q.type not in ['scale', 'date', 'section'] %}
         {% set ct = correct_text(q) %}
-        {% if ct %}<div class="answer-box correct"><span class="muted small">{{ t('correct_answer') }}</span><div class="answer-text" dir="auto">{{ ct }}</div></div>{% endif %}
+        {% if ct %}<div class="answer-box correct"><span class="muted small">{{ t('model_answer') if q.type in ['paragraph', 'file', 'draw'] else t('correct_answer') }}</span><div class="answer-text" dir="auto">{{ ct }}</div></div>{% endif %}
       {% endif %}
       {% if q.explanation %}<div class="explain">{{ icon('book', 14) }} {{ q.explanation }}</div>{% endif %}
       {% if a and a.feedback %}<div class="explain teacher">{{ icon('user', 14) }} {{ a.feedback }}</div>{% endif %}

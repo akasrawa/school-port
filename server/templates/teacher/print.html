@@ -213,7 +213,11 @@
         {% else %}<div class="ruled"></div>{% endif %}
       {% elif q.type == 'file' %}
         <div class="desc">{{ (a.file_name if attempt and a and a.file_name else t('print_file_note')) }}</div>
-      {% elif q.type == 'scale' %}
+      {% endif %}
+      {% if show_key and q.type in ['paragraph', 'draw', 'file'] and correct_text(q) %}
+        <div class="desc key-ans" dir="auto">✓ {{ correct_text(q) }}</div>
+      {% endif %}
+      {% if q.type == 'scale' %}
         <div class="opts">{% for n in range(1, (q.options.max if q.options else 5) + 1) %}<span class="opt"><span class="c">{{ n }}</span></span>{% endfor %}</div>
       {% elif q.type == 'date' %}<div class="wline"></div>
       {% endif %}

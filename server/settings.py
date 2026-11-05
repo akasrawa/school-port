@@ -12,6 +12,7 @@ DEFAULTS = {
     "allow_teacher_signup": "0",
     "teachers_excel_import": "0",
     "teachers_manage_students": "1",
+    "default_manual_grade": "1",
     "auto_backup_hours": "24",
     "backup_keep": "14",
     "last_auto_backup": "0",

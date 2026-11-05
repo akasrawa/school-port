@@ -12,6 +12,7 @@
   <div class="inline-actions">
     <a class="btn outline" href="{{ url_for('teacher.edit_form', fid=form.id) }}">{{ icon('edit', 16) }}<span class="hide-sm">{{ t('edit') }}</span></a>
     <a class="btn outline" href="{{ url_for('teacher.analytics', fid=form.id) }}">{{ icon('chart', 16) }}<span class="hide-sm">{{ t('analytics') }}</span></a>
+    {% if is_admin and owner_name %}<span class="owner-chip" title="{{ t('exam_owner') }}">{{ icon('user', 16) }}<span class="muted">{{ t('exam_owner') }}:</span> <b>{{ owner_name }}</b></span>{% endif %}
     <a class="btn success" href="{{ url_for('teacher.export_xlsx', fid=form.id) }}">{{ icon('download', 16) }}<span class="hide-sm">{{ t('export_excel') }}</span></a>
     <form method="post" action="{{ url_for('teacher.regrade', fid=form.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn outline" type="submit" title="{{ t('regrade_hint') }}">{{ icon('refresh', 16) }}<span class="hide-sm">{{ t('regrade') }}</span></button></form>

@@ -19,7 +19,7 @@
       <label class="search-box grow">{{ icon('search', 18) }}<input type="search" name="q" value="{{ q }}" placeholder="{{ t('search_my_exams_ph') }}" aria-label="{{ t('search') }}"></label>
       <button class="btn primary" type="submit">{{ icon('search', 16) }}<span class="hide-sm">{{ t('search') }}</span></button>
     </form>
-    {% if not cards %}<div class="card">{{ empty(t('no_exams_found') if q else t('no_exams_assigned_student')) }}</div>{% endif %}
+    {% if not cards %}<div class="card">{{ empty(t('no_exams_found') if q else (t('all_exams_done') if results else t('no_exams_assigned_student'))) }}</div>{% endif %}
     <div class="exam-list">
       {% for c in cards %}
       {% set f = c.form %}
@@ -81,7 +81,6 @@
       <dl class="info-list">
         <dt>{{ t('my_class') }}</dt>
         <dd>{% if classes %}{% for c in classes %}<span class="badge blue">{{ c.name }}</span> {% endfor %}{% else %}<span class="muted">{{ t('no_class_yet') }}</span>{% endif %}</dd>
-        {% set teachers = classes | map(attribute='teacher_name') | unique | list %}
         {% if teachers %}<dt>{{ t('my_teachers') }}</dt><dd>{{ teachers | join('، ') }}</dd>{% endif %}
         <dt>{{ t('exams_taken') }}</dt><dd>{{ results | length }}</dd>
       </dl>

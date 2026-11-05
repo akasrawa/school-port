@@ -268,13 +268,24 @@ def student_dashboard():
             "can_start": state == "open" and (not allowed or f["used"] < allowed),
             "todo": state == "open" and not f["used"] and not f["running_id"],
         })
+    # Once a student has submitted an exam it leaves "available exams" (it stays under "my results"),
+    # unless she may take it again (retake granted / more attempts allowed).
+    cards = [c for c in cards if c["form"]["running_id"] or c["can_start"] or not c["form"]["used"]]
     cards.sort(key=lambda c: (not c["form"]["running_id"], not c["can_start"], c["state"] != "open"))
     results = db.execute(
         """SELECT a.*, f.title, f.show_results, f.pass_percent FROM attempts a JOIN forms f ON f.id=a.form_id
            WHERE a.user_id=? AND a.is_preview=0 AND a.status!='in_progress' ORDER BY a.submitted_at DESC LIMIT 20""",
         (uid,),
     ).fetchall()
-    return render_template("student/dashboard.html", classes=classes, cards=cards, results=results, q=q)
+    teachers = [r["name"] for r in db.execute(
+        """SELECT name FROM users WHERE role='teacher' AND active=1 AND id IN (
+             SELECT c.teacher_id FROM classes c JOIN class_members m ON m.class_id=c.id WHERE m.student_id=?
+             UNION SELECT ct.teacher_id FROM class_teachers ct JOIN class_members m ON m.class_id=ct.class_id WHERE m.student_id=?
+           ) ORDER BY name""",
+        (uid, uid),
+    ).fetchall()]
+    return render_template("student/dashboard.html", classes=classes, cards=cards, results=results, q=q,
+                           teachers=teachers)
 
 
 @bp.post("/student/join")

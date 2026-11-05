@@ -10,7 +10,7 @@ EXTRA = {
     "grading_mode": ("Grading", "التصحيح"),
     "grading_auto": ("Automatic", "آلي"),
     "grading_manual": ("Manual", "يدوي"),
-    "manual_key_hint": ("Graded by the teacher. The correct answer you set is shown as a guide while grading.", "يصححه المعلم يدويًا، وتظهر الإجابة الصحيحة التي حددتِها كمرجع أثناء التصحيح."),
+    "manual_key_hint": ("Graded by the teacher. The correct answer you set is shown while grading, in the printed answer key and in the student's review.", "يصححه المعلم يدويًا، وتظهر الإجابة الصحيحة التي حددتِها أثناء التصحيح وفي ورقة الإجابة المطبوعة وفي مراجعة إجابات الطالب."),
     # ---- v2.2
     "match_tap_hint": ("Tap an item, then tap its match below. Tap a filled answer again to clear it.", "اضغط على العبارة، ثم اضغط على ما يناسبها من البطاقات بالأسفل. اضغط الإجابة مرة أخرى لمسحها."),
     "match_slot_empty": ("Tap to choose…", "اضغط للاختيار…"),
@@ -434,4 +434,13 @@ EXTRA = {
     "retakes_granted": ("Extra attempts granted", "محاولات إضافية ممنوحة"),
     "retake_explain": ("Exams can be taken once. Use “⋯ → Allow retake” to let one student try again; her new attempt appears here.", "يؤدى الاختبار مرة واحدة. استخدمي «⋯ ← السماح بالإعادة» لتمنحي طالبًا محاولة أخرى، وستظهر محاولته الجديدة هنا."),
     "delete_attempt": ("Delete submission", "حذف التسليم"),
+    "hint_label": ("Hint", "التلميح"),
+    "model_answer": ("Model answer (optional)", "الإجابة النموذجية (اختياري)"),
+    "model_answer_ph": ("Shown to the teacher while grading, in the printed answer key and in the student's review", "تظهر للمعلم أثناء التصحيح وفي ورقة الإجابة المطبوعة وفي مراجعة إجابات الطالب"),
+    "setting_default_manual_grade": ("New questions are graded manually", "تصحيح الأسئلة الجديدة يدوي افتراضيًا"),
+    "setting_default_manual_grade_hint": ("When a teacher adds a question, its grading starts as “Manual”. She can switch it to “Auto” per question.", "عند إضافة سؤال جديد يكون التصحيح «يدوي»، ويمكن تغييره إلى «آلي» لكل سؤال."),
+    "all_exams_done": ("You have finished all your exams. Your results are below.", "أنهيتَ جميع الاختبارات المتاحة. تجد نتائجك في الأسفل."),
+    "people_sub": ("Students with exam details", "قائمة الطلاب مع تفاصيل الاختبارات"),
+    "people_search_ph": ("Search by student name, username or exam", "ابحث باسم الطالب أو اسم المستخدم أو الاختبار"),
+    "people_none_pending": ("Nothing is waiting for grading.", "لا توجد تسليمات بانتظار التصحيح."),
 }

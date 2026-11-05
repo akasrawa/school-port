@@ -21,8 +21,9 @@
 <section class="stats">
   <div class="stat blue"><span class="stat-icon">{{ icon('file', 20) }}</span><div><b>{{ stats.forms }}</b><span>{{ t('stat_exams') }}</span></div></div>
   <div class="stat green"><span class="stat-icon">{{ icon('send', 20) }}</span><div><b>{{ stats.published }}</b><span>{{ t('stat_published') }}</span></div></div>
-  <div class="stat blue"><span class="stat-icon">{{ icon('check', 20) }}</span><div><b>{{ stats.submissions }}</b><span>{{ t('stat_submissions') }}</span></div></div>
-  <div class="stat red"><span class="stat-icon">{{ icon('edit', 20) }}</span><div><b>{{ stats.pending }}</b><span>{{ t('stat_pending') }}</span></div></div>
+  <a class="stat blue" href="{{ url_for('teacher.people', kind='submissions') }}"><span class="stat-icon">{{ icon('check', 20) }}</span><div><b>{{ stats.submissions }}</b><span>{{ t('stat_submissions') }}</span></div></a>
+  <a class="stat red" href="{{ url_for('teacher.people', kind='pending') }}"><span class="stat-icon">{{ icon('edit', 20) }}</span><div><b>{{ stats.pending }}</b><span>{{ t('stat_pending') }}</span></div></a>
+  <a class="stat amber" href="{{ url_for('teacher.people', kind='not_started') }}"><span class="stat-icon">{{ icon('clock', 20) }}</span><div><b>{{ stats.not_started }}</b><span>{{ t('filter_not_started') }}</span></div></a>
   <a class="stat green" href="{{ url_for('users.index') if setting_flag('teachers_manage_students') or is_admin else url_for('teacher.classes') }}"><span class="stat-icon">{{ icon('users', 20) }}</span><div><b>{{ stats.students }}</b><span>{{ t('stat_students') }}</span></div></a>
 </section>
 

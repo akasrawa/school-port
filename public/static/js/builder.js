@@ -93,7 +93,8 @@
     var q = {
       id: null, type: type, text: "", description: "", image: "", audio: "",
       points: UNSCORED.indexOf(type) !== -1 ? 0 : (type === "match" || type === "fill" ? 2 : 1),
-      required: type !== "section", options: null, correct: null, explanation: "", partial: false
+      required: type !== "section", options: null, correct: null, explanation: "", partial: false,
+      manual_grade: GRADED.indexOf(type) !== -1 && !!data.defaultManual
     };
     applyTypeDefaults(q);
     return q;
@@ -119,7 +120,9 @@
     var wasChoice = CHOICE.indexOf(q.type) !== -1;
     var oldCorrect = q.correct;
     var wasUnscored = UNSCORED.indexOf(q.type) !== -1;
+    var wasGraded = GRADED.indexOf(q.type) !== -1;
     q.type = type;
+    if (!wasGraded && GRADED.indexOf(type) !== -1) q.manual_grade = !!data.defaultManual;
     if (!(wasChoice && CHOICE.indexOf(type) !== -1)) q.options = null;
     applyTypeDefaults(q);
     q.correct = null;
@@ -596,6 +599,12 @@
     if (q.type === "paragraph") fields.appendChild(h("p", { class: "q-hint", text: T.manual_grade_note }));
     if (GRADED.indexOf(q.type) !== -1 && q.manual_grade) fields.appendChild(h("p", { class: "q-hint warn", text: T.manual_key_hint }));
     if (q.type === "file") fields.appendChild(h("p", { class: "q-hint", text: T.file_upload_note }));
+    if (MANUAL.indexOf(q.type) !== -1) {
+      var model = h("textarea", { rows: "2", maxlength: "3000", dir: "auto", class: "model-answer", placeholder: T.model_answer_ph, "aria-label": T.model_answer,
+        oninput: function () { q.correct = model.value; touch(); } });
+      model.value = typeof q.correct === "string" ? q.correct : "";
+      fields.appendChild(h("label", { class: "field" }, [h("span", { text: T.model_answer }), model]));
+    }
     if (q.type === "draw") {
       var linesBox = h("input", { type: "checkbox", onchange: function () { q.options.lines = linesBox.checked; touch(); } });
       linesBox.checked = q.options.lines !== false;

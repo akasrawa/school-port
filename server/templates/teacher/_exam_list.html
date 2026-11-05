@@ -18,7 +18,6 @@
         {% if f.grade %}<span class="badge green">{{ f.grade }}</span>{% endif %}
       </div>
       <div class="exam-meta">
-        {% if is_admin %}<span>{{ icon('user', 14) }}{{ f.teacher_name }}</span>{% endif %}
         <span>{{ icon('file', 14) }}{{ t('n_questions', n=f.qcount) }}</span>
         <span>{{ icon('clock', 14) }}{{ (f.time_limit_min ~ ' ' ~ t('min')) if f.time_limit_min else t('no_limit') }}</span>
         <span>{{ icon('check', 14) }}{{ t('n_submissions', n=f.acount) }}</span>
@@ -37,6 +36,7 @@
       {% endif %}
       <a class="btn sm outline" href="{{ url_for('teacher.submissions', fid=f.id) }}">{{ icon('check', 14) }}{{ t('submissions') }}</a>
       <a class="btn sm outline" href="{{ url_for('teacher.analytics', fid=f.id) }}">{{ icon('chart', 14) }}{{ t('analytics') }}</a>
+      {% if is_admin %}<span class="owner-chip" title="{{ t('exam_owner') }}">{{ icon('user', 14) }}<span class="muted">{{ t('exam_owner') }}:</span> <b>{{ f.teacher_name or '—' }}</b></span>{% endif %}
       <a class="btn sm outline" href="{{ url_for('teacher.print_form', fid=f.id) }}" target="_blank">{{ icon('print', 14) }}{{ t('print') }}</a>
       <details class="menu">
         <summary class="btn sm ghost" aria-label="{{ t('more') }}">⋯</summary>

@@ -160,12 +160,14 @@ def dashboard():
         () if is_admin() else (uid,),
     ).fetchall()
     filtered = bool(q or status or class_id or subject or grade)
+    waiting = not_started_summary(db, None if is_admin() else uid, 10000)
+    stats["not_started"] = sum(len(w["waiting"]) for w in waiting)
     return render_template(
         "teacher/dashboard.html", forms=forms, stats=stats, recent=recent, q=q, status=status,
         class_id=class_id, subject=subject, grade=grade, classes=class_list, filtered=filtered,
         subjects=facet_values(db, "subject"), grades=facet_values(db, "grade"),
         needs_admin=not db.execute("SELECT 1 FROM users WHERE role='admin' AND active=1").fetchone(),
-        waiting=not_started_summary(db, None if is_admin() else uid, 6),
+        waiting=waiting[:6],
     )
 
 
@@ -255,6 +257,7 @@ def edit_form(fid):
         "bank_save_one", "bank_saved", "bank_exists", "bank_title", "bank_none_found", "bank_added", "loading",
         "add_audio", "record_audio", "stop_recording", "remove_audio", "recording", "mic_denied", "fmt_hint",
         "err_audio_too_large", "grading_mode", "grading_auto", "grading_manual", "manual_key_hint",
+        "model_answer", "model_answer_ph",
     ]
     i18n = {k: t(k) for k in keys}
     form_data = {
@@ -264,6 +267,7 @@ def edit_form(fid):
         "imageUrl": url_for("teacher.upload_image", fid=fid),
         "bankUrl": url_for("teacher.api_bank"),
         "bankUsedUrl": url_for("teacher.api_bank_used"),
+        "defaultManual": flag("default_manual_grade"),
         "mediaBase": url_for("exam.media", name="__NAME__"),
         "settings": {
             "title": form["title"],
@@ -492,6 +496,8 @@ def clean_question(raw):
 
         if not fill_blanks({"options": out["options"]}):
             raise ValueError(t("err_fill_blanks"))
+    if kind in ("paragraph", "file", "draw") and isinstance(correct, str) and correct.strip():
+        out["correct"] = correct.strip()[:3000]  # model answer, shown to the teacher and in the answer key
     return out
 
 
@@ -688,8 +694,9 @@ def submissions(fid):
             sql += " AND (a.violations>0 OR a.late=1 OR a.auto_submitted=1)"
         sql += " ORDER BY a.submitted_at DESC"
         rows = db.execute(sql, (fid,)).fetchall()
+    owner = db.execute("SELECT name FROM users WHERE id=?", (form["teacher_id"],)).fetchone()
     return render_template(
-        "teacher/submissions.html", form=form, rows=rows, flt=flt, running=len(in_progress),
+        "teacher/submissions.html", form=form, rows=rows, flt=flt, running=len(in_progress), owner_name=owner["name"] if owner else "",
         in_progress=in_progress, not_started=not_started, roster_size=len(roster),
     )
 
@@ -716,6 +723,59 @@ def not_started_summary(db, teacher_id=None, limit=12):
         })
     out.sort(key=lambda x: -len(x["waiting"]))
     return out[:limit]
+
+
+PEOPLE_KINDS = ("submissions", "pending", "not_started")
+
+
+@bp.get("/students/<kind>")
+@login_required("staff")
+def people(kind):
+    """Student-level lists behind the dashboard counters: submissions, waiting for grading, not started."""
+    if kind not in PEOPLE_KINDS:
+        abort(404)
+    db = get_db()
+    teacher_id = None if is_admin() else g.user["id"]
+    q = (request.args.get("q") or "").strip()
+    rows, waiting = [], []
+    if kind == "not_started":
+        for w in not_started_summary(db, teacher_id, limit=10000):
+            for s in w["waiting"]:
+                waiting.append({"student": s, "form": w["form"]})
+        if q:
+            ql = q.lower()
+            waiting = [r for r in waiting if ql in (r["student"]["name"] or "").lower()
+                       or ql in str(r["student"]["username"] or "").lower() or ql in (r["form"]["title"] or "").lower()]
+        waiting.sort(key=lambda r: (r["student"]["name"] or "", r["form"]["title"] or ""))
+    else:
+        sql = """SELECT a.*, f.title AS form_title, f.pass_percent, u.username, tu.name AS teacher_name,
+                 (SELECT GROUP_CONCAT(c.name, '، ') FROM classes c JOIN class_members m ON m.class_id=c.id
+                  WHERE m.student_id=a.user_id) AS class_names
+                 FROM attempts a JOIN forms f ON f.id=a.form_id
+                 LEFT JOIN users u ON u.id=a.user_id LEFT JOIN users tu ON tu.id=f.teacher_id
+                 WHERE a.is_preview=0 AND a.status!='in_progress'"""
+        args = []
+        if kind == "pending":
+            sql += " AND a.status='submitted'"
+        if teacher_id:
+            sql += " AND f.teacher_id=?"
+            args.append(teacher_id)
+        if q:
+            sql += " AND (a.taker_name LIKE ? OR u.username LIKE ? OR f.title LIKE ?)"
+            args += [f"%{q}%"] * 3
+        sql += " ORDER BY a.submitted_at " + ("ASC" if kind == "pending" else "DESC") + " LIMIT 1000"
+        rows = db.execute(sql, args).fetchall()
+    counts = _people_counts(db, teacher_id)
+    return render_template("teacher/people.html", kind=kind, rows=rows, waiting=waiting, q=q, counts=counts)
+
+
+def _people_counts(db, teacher_id):
+    sql = """SELECT COUNT(*) AS n, SUM(CASE WHEN a.status='submitted' THEN 1 ELSE 0 END) AS p
+             FROM attempts a JOIN forms f ON f.id=a.form_id WHERE a.is_preview=0 AND a.status!='in_progress'"""
+    row = db.execute(sql + (" AND f.teacher_id=?" if teacher_id else ""), (teacher_id,) if teacher_id else ()).fetchone()
+    waiting = not_started_summary(db, teacher_id, limit=10000)
+    return {"submissions": row["n"] or 0, "pending": row["p"] or 0,
+            "not_started": sum(len(w["waiting"]) for w in waiting)}
 
 
 @bp.post("/forms/<int:fid>/retake/<int:uid>")
