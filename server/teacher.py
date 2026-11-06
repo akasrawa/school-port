@@ -831,15 +831,22 @@ def attempt_detail(aid):
     db = get_db()
     form = db.execute("SELECT * FROM forms WHERE id=?", (attempt["form_id"],)).fetchone()
     questions = load_questions(db, form["id"])
-    questions = [q for q in questions if q["type"] != "section"]
     answers = {r["question_id"]: r for r in db.execute("SELECT * FROM answers WHERE attempt_id=?", (aid,))}
     events = db.execute("SELECT * FROM events WHERE attempt_id=? ORDER BY at", (aid,)).fetchall()
     student = db.execute("SELECT * FROM users WHERE id=?", (attempt["user_id"],)).fetchone() if attempt["user_id"] else None
     items = []
+    number = 0
     for q in questions:
+        if q["type"] == "section":
+            # reading passage / instructions heading, shown above the questions that follow it
+            if (q["text"] or "").strip() or (q["description"] or "").strip() or q.get("image"):
+                items.append({"section": True, "q": q})
+            continue
+        number += 1
         row = answers.get(q["id"])
         items.append(
             {
+                "n": number,
                 "q": q,
                 "answer": row,
                 "value": jl(row["value_json"], None) if row else None,

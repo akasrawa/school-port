@@ -9,7 +9,6 @@
     <p class="muted">{{ t('teacher_dash_sub') }}</p>
   </div>
   <div class="inline-actions">
-    {% if excel_import_allowed() %}<a class="btn outline" href="{{ url_for('qio.import_page') }}">{{ icon('upload', 16) }}{{ t('excel_import_title') }}</a>{% endif %}
     <form method="post" action="{{ url_for('teacher.new_form') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn primary lg" type="submit">{{ icon('plus', 18) }}{{ t('new_exam') }}</button>

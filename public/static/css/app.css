@@ -522,3 +522,11 @@ details.menu[open] > .act { background: var(--c); color: #fff; }
 /* Student's answer in grading and review */
 .review-q .answer-box:not(.correct) .answer-text { color: var(--green); font-weight: 700; }
 .review-q .q-desc { margin: -0.2rem 0 0.6rem; }
+
+/* Reading passage / instructions and fill-in sentences on grading + review pages */
+.review-sec { border-inline-start: 4px solid var(--blue); background: linear-gradient(0deg, var(--surface), var(--blue-soft)); }
+.review-sec h3 { margin: 0 0 0.4rem; font-size: 1.05rem; color: var(--blue-dark); }
+.review-sec .passage { white-space: pre-wrap; line-height: 1.9; background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 10px; padding: 0.7rem 0.9rem; margin-top: 0.4rem; }
+.fill-line { white-space: pre-wrap; line-height: 2.4; font-weight: 600; }
+.fill-blank { display: inline-block; min-width: 4.5em; padding: 0 0.4em; margin: 0 0.15em; border-bottom: 2px solid var(--green); color: var(--green); font-weight: 800; text-align: center; line-height: 1.5; }
+.fill-blank.empty { color: var(--muted); border-bottom-color: var(--line-strong); font-weight: 400; }

@@ -39,10 +39,17 @@
   <div class="review-list">
     {% for it in items %}
     {% set q = it.q %}
+    {% if it.section %}
+    <section class="card review-sec">
+      {% if q.text %}<h3 dir="auto">{{ q.text | rich }}</h3>{% endif %}
+      {% if q.image %}<img class="q-img sm" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}
+      {% if q.description and q.description.strip() %}<div class="passage" dir="auto">{{ q.description | rich }}</div>{% endif %}
+    </section>
+    {% else %}
     {% set a = it.answer %}
     <article class="card review-q {{ 'needs' if it.manual_type and (a is none or not a.manual) and it.max > 0 }}">
       <header>
-        <span class="badge blue">{{ loop.index }}</span>
+        <span class="badge blue">{{ it.n }}</span>
         <span class="badge gray">{{ t('type_' + q.type) }}</span>
         {% if it.max > 0 %}<span class="muted small">{{ t('points') }}: {{ fmt_num(it.max) }}</span>{% endif %}
         {% if a and a.points is not none and it.max > 0 and not it.manual_type %}
@@ -60,6 +67,8 @@
           {% if a and a.file_path %}<a href="{{ url_for('teacher.answer_file', answer_id=a.id, inline=1) }}" target="_blank"><img class="drawn-answer" src="{{ url_for('teacher.answer_file', answer_id=a.id, inline=1) }}" alt="{{ t('student_answer') }}"></a>{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
         {% elif q.type == 'file' %}
           {% if a and a.file_path %}<a class="btn outline sm" href="{{ url_for('teacher.answer_file', answer_id=a.id) }}">{{ icon('download', 14) }}{{ a.file_name }}</a>{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
+        {% elif q.type == 'fill' %}
+          <div class="fill-line" dir="auto">{% for p in fill_parts(q) %}{% if p.blank is defined %}{% set given = it.value[p.blank] if it.value and p.blank < it.value|length else '' %}<span class="fill-blank {{ 'empty' if not given }}">{{ given or '…' }}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
         {% else %}
           {% set txt = answer_text(q, it.value) %}
           {% if txt %}<div class="answer-text" dir="auto">{{ txt }}</div>{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
@@ -90,6 +99,7 @@
       <label class="field"><span>{{ t('feedback') }}</span>
         <textarea name="feedback_{{ q.id }}" rows="2" maxlength="2000" placeholder="{{ t('feedback_ph') }}">{{ a.feedback if a and a.feedback else '' }}</textarea></label>
     </article>
+    {% endif %}
     {% endfor %}
   </div>
 

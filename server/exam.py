@@ -653,12 +653,17 @@ def result(aid):
     items = []
     if show_review:
         answers = {r["question_id"]: r for r in db.execute("SELECT * FROM answers WHERE attempt_id=?", (aid,))}
+        number = 0
         for q in ordered_questions(load_questions(db, form["id"]), attempt, form):
             if q["type"] == "section":
+                if (q["text"] or "").strip() or (q["description"] or "").strip() or q.get("image"):
+                    items.append({"section": True, "q": q})
                 continue
+            number += 1
             row = answers.get(q["id"])
             items.append(
                 {
+                    "n": number,
                     "q": q,
                     "value": jl(row["value_json"], None) if row else None,
                     "answer": row,

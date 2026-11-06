@@ -9,7 +9,7 @@ from markupsafe import Markup, escape
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .db import close_db, get_db, init_db
-from .grading import answer_text, correct_text, is_manual
+from .grading import answer_text, correct_text, fill_parts, is_manual
 from .i18n import current_lang, t
 from .utils import fmt_num, jl, pct, safe_next
 
@@ -174,7 +174,7 @@ def create_app():
         t=t, fmt_num=fmt_num, pct=pct, answer_text=answer_text, correct_text=correct_text, csrf_token=csrf_token,
         media_url=lambda name: url_for("exam.media", name=name) if name else "",
         setting_flag=_flag,
-        fill_bank_words=_fill_bank_words, fill_ok=_fill_ok, fill_answer=_fill_answer, is_manual=is_manual,
+        fill_bank_words=_fill_bank_words, fill_ok=_fill_ok, fill_answer=_fill_answer, is_manual=is_manual, fill_parts=fill_parts,
     )
 
     class _OwnerTeachers:

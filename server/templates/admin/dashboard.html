@@ -28,7 +28,6 @@
   <a class="quick-card" href="{{ url_for('users.bulk', role='student') }}"><span class="feature-icon green">{{ icon('users', 22) }}</span><b>{{ t('bulk_students') }}</b><small>{{ t('qa_students') }}</small></a>
   <form method="post" action="{{ url_for('teacher.new_form') }}" class="quick-card-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="quick-card" type="submit"><span class="feature-icon">{{ icon('plus', 22) }}</span><b>{{ t('new_exam') }}</b><small>{{ t('qa_exam') }}</small></button></form>
-  <a class="quick-card" href="{{ url_for('qio.import_page') }}"><span class="feature-icon green">{{ icon('upload', 22) }}</span><b>{{ t('excel_import_title') }}</b><small>{{ t('qa_excel') }}</small></a>
   <a class="quick-card" href="{{ url_for('admin.labels') }}"><span class="feature-icon">{{ icon('tag', 22) }}</span><b>{{ t('labels_title') }}</b><small>{{ t('qa_labels') }}</small></a>
   <a class="quick-card" href="{{ url_for('admin.backup_list') }}"><span class="feature-icon red">{{ icon('database', 22) }}</span><b>{{ t('backups_title') }}</b><small>{{ t('qa_backup') }}</small></a>
 </section>
