@@ -9,6 +9,7 @@
     <p class="muted">{{ t('teacher_dash_sub') }}</p>
   </div>
   <div class="inline-actions">
+    <a class="btn success lg" href="{{ url_for('teacher.results') }}">{{ icon('chart', 18) }}{{ t('results_title') }}</a>
     <form method="post" action="{{ url_for('teacher.new_form') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn primary lg" type="submit">{{ icon('plus', 18) }}{{ t('new_exam') }}</button>

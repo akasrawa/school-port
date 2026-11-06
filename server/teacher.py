@@ -919,12 +919,16 @@ def delete_attempt(aid):
 @login_required("staff")
 def answer_file(answer_id):
     row = get_db().execute(
-        """SELECT an.*, f.teacher_id FROM answers an JOIN attempts a ON a.id=an.attempt_id
+        """SELECT an.*, f.teacher_id, a.user_id AS student_id FROM answers an JOIN attempts a ON a.id=an.attempt_id
            JOIN forms f ON f.id=a.form_id WHERE an.id=?""",
         (answer_id,),
     ).fetchone()
-    if row is None or not (is_admin() or row["teacher_id"] == g.user["id"]) or not row["file_path"]:
+    if row is None or not row["file_path"]:
         abort(404)
+    if not (is_admin() or row["teacher_id"] == g.user["id"]):
+        allowed = manageable_student_ids(get_db())  # her own students (results list → print)
+        if not (row["student_id"] and allowed and row["student_id"] in allowed):
+            abort(404)
     from . import storage
 
     data, mime = storage.load("answers", row["file_path"])
@@ -1501,12 +1505,134 @@ def print_form(fid):
     )
 
 
+# ------------------------------------------------------------------ results
+def _results_filters():
+    return {
+        "student": (request.args.get("student") or "").strip(),
+        "exam": (request.args.get("exam") or "").strip(),
+        "subject": (request.args.get("subject") or "").strip(),
+        "status": request.args.get("status") if request.args.get("status") in ("graded", "submitted") else "",
+    }
+
+
+def _results_rows(db, flt, limit=2000):
+    """Submitted attempts. Admin: everyone. Teacher: only students registered under her (her classes / created by her)."""
+    sql = """SELECT a.id, a.form_id, a.user_id, a.taker_name, a.attempt_no, a.status, a.total_score, a.max_score,
+             a.submitted_at, a.late, a.auto_submitted, a.violations,
+             f.title AS form_title, f.subject, f.grade, f.pass_percent, u.username, tu.name AS teacher_name,
+             (SELECT GROUP_CONCAT(c.name, '، ') FROM classes c JOIN class_members m ON m.class_id=c.id
+              WHERE m.student_id=a.user_id) AS class_names
+             FROM attempts a JOIN forms f ON f.id=a.form_id
+             LEFT JOIN users u ON u.id=a.user_id LEFT JOIN users tu ON tu.id=f.teacher_id
+             WHERE a.is_preview=0 AND a.status!='in_progress'"""
+    args = []
+    allowed = manageable_student_ids(db)
+    if allowed is not None:
+        if not allowed:
+            return []
+        ids = sorted(allowed)
+        sql += " AND a.user_id IN (%s)" % ",".join("?" * len(ids))
+        args += ids
+    if flt["student"]:
+        sql += " AND (a.taker_name LIKE ? OR u.username LIKE ?)"
+        args += [f"%{flt['student']}%"] * 2
+    if flt["exam"]:
+        sql += " AND (f.title LIKE ? OR f.code LIKE ?)"
+        args += [f"%{flt['exam']}%"] * 2
+    if flt["subject"]:
+        sql += " AND f.subject=?"
+        args.append(flt["subject"])
+    if flt["status"]:
+        sql += " AND a.status=?"
+        args.append(flt["status"])
+    sql += " ORDER BY a.submitted_at DESC LIMIT %d" % int(limit)
+    return db.execute(sql, args).fetchall()
+
+
+@bp.get("/results")
+@login_required("staff")
+def results():
+    db = get_db()
+    flt = _results_filters()
+    rows = _results_rows(db, flt)
+    subjects = [r["v"] for r in db.execute("SELECT DISTINCT subject v FROM forms WHERE subject!='' ORDER BY v")]
+    return render_template("teacher/results.html", rows=rows, flt=flt, subjects=subjects,
+                           filtered=any(flt.values()))
+
+
+@bp.get("/results.xlsx")
+@login_required("staff")
+def results_xlsx():
+    db = get_db()
+    flt = _results_filters()
+    rows = _results_rows(db, flt, limit=50000)
+    rtl = current_lang() == "ar"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = t("results_title")[:31]
+    header = ["#", t("col_name"), t("col_username"), t("col_class"), t("subject"), t("exam")]
+    if is_admin():
+        header.append(t("role_teacher"))
+    header += [t("col_score"), t("col_max"), t("col_percent"), t("col_result"), t("col_status"), t("col_submitted")]
+    ws.append(header)
+    head_fill, head_font = PatternFill("solid", fgColor="1D4ED8"), Font(bold=True, color="FFFFFF")
+    for cell in ws[1]:
+        cell.fill, cell.font = head_fill, head_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    green, red, amber = PatternFill("solid", fgColor="DCFCE7"), PatternFill("solid", fgColor="FEE2E2"), PatternFill("solid", fgColor="FEF3C7")
+    for i, a in enumerate(rows, start=1):
+        percent = pct(a["total_score"], a["max_score"])
+        graded = a["status"] == "graded"
+        passed = percent >= (a["pass_percent"] or 0)
+        row = [i, a["taker_name"], a["username"] or "", a["class_names"] or "", a["subject"] or "", a["form_title"]]
+        if is_admin():
+            row.append(a["teacher_name"] or "")
+        row += [a["total_score"], a["max_score"], percent,
+                (t("passed") if passed else t("failed")) if graded else "",
+                t("status_graded") if graded else t("status_pending"), _local(a["submitted_at"])]
+        ws.append(row)
+        status_col = len(row) - 1
+        ws.cell(row=ws.max_row, column=status_col).fill = green if graded else amber
+        if graded:
+            ws.cell(row=ws.max_row, column=status_col - 1).fill = green if passed else red
+    for idx, col in enumerate(ws.columns, start=1):
+        width = max((len(str(c.value)) if c.value is not None else 0) for c in col)
+        ws.column_dimensions[get_column_letter(idx)].width = min(48, max(10, width + 2))
+    ws.freeze_panes = "A2"
+    ws.sheet_view.rightToLeft = rtl
+    ws.auto_filter.ref = ws.dimensions
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    from datetime import datetime
+
+    name = "results-%s.xlsx" % datetime.utcnow().strftime("%Y-%m-%d")
+    return send_file(buffer, as_attachment=True, download_name=name,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+def _attempt_for_print(aid):
+    """Owner/admin, or a teacher printing the sheet of one of her own students (from the results list)."""
+    db = get_db()
+    row = db.execute(
+        "SELECT a.*, f.teacher_id FROM attempts a JOIN forms f ON f.id=a.form_id WHERE a.id=?", (aid,)
+    ).fetchone()
+    if row is None:
+        abort(404)
+    if is_admin() or row["teacher_id"] == g.user["id"]:
+        return row
+    allowed = manageable_student_ids(db)
+    if row["user_id"] and allowed and row["user_id"] in allowed:
+        return row
+    abort(404)
+
+
 @bp.get("/attempts/<int:aid>/print")
 @login_required("staff")
 def print_attempt(aid):
     from .utils import number_words
 
-    attempt = own_attempt(aid)
+    attempt = _attempt_for_print(aid)
     db = get_db()
     form = db.execute("SELECT * FROM forms WHERE id=?", (attempt["form_id"],)).fetchone()
     answers = {r["question_id"]: r for r in db.execute("SELECT * FROM answers WHERE attempt_id=?", (aid,))}

@@ -444,4 +444,13 @@ EXTRA = {
     "people_search_ph": ("Search by student name, username or exam", "ابحث باسم الطالب أو اسم المستخدم أو الاختبار"),
     "people_none_pending": ("Nothing is waiting for grading.", "لا توجد تسليمات بانتظار التصحيح."),
     "actions": ("Actions", "الإجراءات"),
+    "results_title": ("Exam results", "نتائج الاختبارات"),
+    "results_sub_admin": ("All submitted exams in the school", "جميع الاختبارات المسلّمة في المدرسة"),
+    "results_sub_teacher": ("Results of the students registered under you", "نتائج الطلاب المسجلين باسمك"),
+    "results_excel": ("Download Excel", "تنزيل ملف إكسل"),
+    "results_student_ph": ("Student name or username", "اسم الطالب أو اسم المستخدم"),
+    "results_exam_ph": ("Exam name", "اسم الاختبار"),
+    "results_all_status": ("All statuses", "كل الحالات"),
+    "qa_results": ("Search, print and export", "بحث وطباعة وتصدير"),
+    "clear_filters": ("Clear", "مسح"),
 }

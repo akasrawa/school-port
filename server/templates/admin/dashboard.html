@@ -26,6 +26,7 @@
 <section class="quick-grid">
   <form method="post" action="{{ url_for('teacher.new_form') }}" class="quick-card-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="quick-card" type="submit"><span class="feature-icon">{{ icon('plus', 22) }}</span><b>{{ t('new_exam') }}</b><small>{{ t('qa_exam') }}</small></button></form>
+  <a class="quick-card" href="{{ url_for('teacher.results') }}"><span class="feature-icon green">{{ icon('chart', 22) }}</span><b>{{ t('results_title') }}</b><small>{{ t('qa_results') }}</small></a>
 </section>
 
 <section class="grid-2">
