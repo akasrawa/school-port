@@ -13,11 +13,11 @@
     <a class="btn outline" href="{{ url_for('teacher.edit_form', fid=form.id) }}">{{ icon('edit', 16) }}<span class="hide-sm">{{ t('edit') }}</span></a>
     <a class="btn outline" href="{{ url_for('teacher.analytics', fid=form.id) }}">{{ icon('chart', 16) }}<span class="hide-sm">{{ t('analytics') }}</span></a>
     {% if is_admin %}{% if owner_teachers %}
-      <form method="post" action="{{ url_for('admin.change_owner', fid=form.id) }}" class="owner-pick" title="{{ t('exam_owner') }}">
+      <form method="post" action="{{ url_for('admin.change_owner', fid=form.id) }}" class="owner-pick">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ request.full_path }}">
-        {{ icon('user', 14) }}<label class="muted" for="owner-{{ form.id }}">{{ t('exam_owner') }}:</label>
+        <label class="owner-ico" for="owner-{{ form.id }}" data-tip="{{ t('exam_owner') }}" aria-label="{{ t('exam_owner') }}">{{ icon('teacher', 16) }}</label>
         <select id="owner-{{ form.id }}" name="teacher_id" onchange="this.form.submit()">{% for tch in owner_teachers %}<option value="{{ tch.id }}" {{ 'selected' if tch.id == form.teacher_id }}>{{ tch.name }}</option>{% endfor %}</select>
-      </form>{% else %}<span class="owner-pick">{{ icon('user', 14) }}<b>{{ form.teacher_name or '—' }}</b></span>{% endif %}{% endif %}
+      </form>{% else %}<span class="owner-pick"><span class="owner-ico" data-tip="{{ t('exam_owner') }}">{{ icon('teacher', 16) }}</span><b>{{ form.teacher_name or '—' }}</b></span>{% endif %}{% endif %}
     <a class="btn success" href="{{ url_for('teacher.export_xlsx', fid=form.id) }}">{{ icon('download', 16) }}<span class="hide-sm">{{ t('export_excel') }}</span></a>
     <form method="post" action="{{ url_for('teacher.regrade', fid=form.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn outline" type="submit" title="{{ t('regrade_hint') }}">{{ icon('refresh', 16) }}<span class="hide-sm">{{ t('regrade') }}</span></button></form>

@@ -530,3 +530,6 @@ details.menu[open] > .act { background: var(--c); color: #fff; }
 .fill-line { white-space: pre-wrap; line-height: 2.4; font-weight: 600; }
 .fill-blank { display: inline-block; min-width: 4.5em; padding: 0 0.4em; margin: 0 0.15em; border-bottom: 2px solid var(--green); color: var(--green); font-weight: 800; text-align: center; line-height: 1.5; }
 .fill-blank.empty { color: var(--muted); border-bottom-color: var(--line-strong); font-weight: 400; }
+
+.owner-ico { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--surface); color: var(--blue); cursor: help; flex: none; }
+.owner-pick .owner-ico { margin-inline-start: -0.35rem; }

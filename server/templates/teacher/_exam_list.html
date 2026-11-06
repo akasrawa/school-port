@@ -43,11 +43,11 @@
         <a class="act act-gray" href="{{ url_for('teacher.print_form', fid=f.id) }}" target="_blank" data-tip="{{ t('print') }}" aria-label="{{ t('print') }}">{{ icon('print', 17) }}</a>
       </div>
       {% if is_admin %}{% if owner_teachers %}
-      <form method="post" action="{{ url_for('admin.change_owner', fid=f.id) }}" class="owner-pick" data-tip="{{ t('exam_owner') }}">
+      <form method="post" action="{{ url_for('admin.change_owner', fid=f.id) }}" class="owner-pick">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ back }}">
-        {{ icon('user', 14) }}<label class="muted" for="owner-{{ f.id }}">{{ t('exam_owner') }}:</label>
+        <label class="owner-ico" for="owner-{{ f.id }}" data-tip="{{ t('exam_owner') }}" aria-label="{{ t('exam_owner') }}">{{ icon('teacher', 16) }}</label>
         <select id="owner-{{ f.id }}" name="teacher_id" onchange="this.form.submit()">{% for tch in owner_teachers %}<option value="{{ tch.id }}" {{ 'selected' if tch.id == f.teacher_id }}>{{ tch.name }}</option>{% endfor %}</select>
-      </form>{% else %}<span class="owner-pick">{{ icon('user', 14) }}<b>{{ f.teacher_name or '—' }}</b></span>{% endif %}{% endif %}
+      </form>{% else %}<span class="owner-pick"><span class="owner-ico" data-tip="{{ t('exam_owner') }}">{{ icon('teacher', 16) }}</span><b>{{ f.teacher_name or '—' }}</b></span>{% endif %}{% endif %}
       <details class="menu">
         <summary class="act act-gray" aria-label="{{ t('more') }}" data-tip="{{ t('more') }}">⋯</summary>
         <div class="menu-pop">
