@@ -52,7 +52,7 @@
         {% endif %}
       </header>
       <h3 class="q-text" dir="auto">{{ q.text | rich }}</h3>
-      {% if q.description and q.description.strip() %}<div class="explain hint" dir="auto">{{ icon('bulb', 14) }}<span><b>{{ t('hint_label') }}:</b> {{ q.description | rich }}</span></div>{% endif %}
+      {% if q.description and q.description.strip() %}<p class="q-desc" dir="auto">{{ q.description | rich }}</p>{% endif %}
       {% if q.image %}<img class="q-img sm" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}{% if q.audio %}<audio class="q-audio" controls preload="none" src="{{ media_url(q.audio) }}"></audio>{% endif %}
       <div class="answer-box">
         <span class="muted small">{{ t('student_answer') }}</span>

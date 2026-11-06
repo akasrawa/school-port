@@ -237,7 +237,7 @@ EXTRA = {
     "manage": ("Manage", "إدارة"),
     "all_exams": ("All exams", "كل الاختبارات"),
     "all_exams_sub": ("Search every exam in the school and open, edit or grade it.", "ابحثي في كل اختبارات المدرسة وافتحيها أو عدّليها أو صحّحيها."),
-    "exam_owner": ("Owner (teacher)", "المالكة (المعلمة)"),
+    "exam_owner": ("Teacher", "المعلمة"),
     "all_teachers": ("All teachers", "كل المعلمات"),
     # ---- search
     "search_exams_ph": ("Search exams: title, code, subject, grade, teacher or question text", "ابحثي في الاختبارات: العنوان، الرمز، المادة، الصف، المعلمة أو نص سؤال"),
@@ -443,4 +443,5 @@ EXTRA = {
     "people_sub": ("Students with exam details", "قائمة الطلاب مع تفاصيل الاختبارات"),
     "people_search_ph": ("Search by student name, username or exam", "ابحث باسم الطالب أو اسم المستخدم أو الاختبار"),
     "people_none_pending": ("Nothing is waiting for grading.", "لا توجد تسليمات بانتظار التصحيح."),
+    "actions": ("Actions", "الإجراءات"),
 }

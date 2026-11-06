@@ -46,17 +46,17 @@
         {% elif it.max > 0 %}<span class="badge gray">{{ t('status_pending') }}</span>{% endif %}
       </header>
       <h3 class="q-text" dir="auto">{{ q.text | rich }}</h3>
-      {% if q.description and q.description.strip() %}<div class="explain hint" dir="auto">{{ icon('bulb', 14) }}<span><b>{{ t('hint_label') }}:</b> {{ q.description | rich }}</span></div>{% endif %}
+      {% if q.description and q.description.strip() %}<p class="q-desc" dir="auto">{{ q.description | rich }}</p>{% endif %}
       {% if q.image %}<img class="q-img sm" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}{% if q.audio %}<audio class="q-audio" controls preload="none" src="{{ media_url(q.audio) }}"></audio>{% endif %}
       <div class="answer-box">
         <span class="muted small">{{ t('student_answer') }}</span>
         {% if q.type == 'draw' %}
-          {% if a and a.file_path %}<img class="drawn-answer" src="{{ url_for('exam.attempt_file', aid=attempt.id, qid=q.id) }}" alt="{{ t('student_answer') }}">{% else %}<div class="answer-text">{{ t('no_answer') }}</div>{% endif %}
+          {% if a and a.file_path %}<img class="drawn-answer" src="{{ url_for('exam.attempt_file', aid=attempt.id, qid=q.id) }}" alt="{{ t('student_answer') }}">{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
         {% elif q.type == 'file' %}
           <div class="answer-text" dir="auto">{{ (a.file_name if a and a.file_name else t('no_answer')) }}</div>
         {% else %}
           {% set txt = answer_text(q, it.value) %}
-          <div class="answer-text" dir="auto">{{ txt if txt else t('no_answer') }}</div>
+          {% if txt %}<div class="answer-text" dir="auto">{{ txt }}</div>{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
         {% endif %}
       </div>
       {% if q.type not in ['scale', 'date', 'section'] %}
