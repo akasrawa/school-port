@@ -1,8 +1,0 @@
-{% from '_icons.html' import icon %}
-{% set ep = request.endpoint %}
-<div class="tabs">
-  <a class="tab {{ 'on' if ep == 'admin.settings' }}" href="{{ url_for('admin.settings') }}">{{ icon('settings', 16) }}{{ t('nav_settings') }}</a>
-  <a class="tab {{ 'on' if ep == 'admin.labels' }}" href="{{ url_for('admin.labels') }}">{{ icon('tag', 16) }}{{ t('labels_title') }}</a>
-  <a class="tab {{ 'on' if ep == 'admin.backup_list' }}" href="{{ url_for('admin.backup_list') }}">{{ icon('database', 16) }}{{ t('backups_title') }}</a>
-  <a class="tab {{ 'on' if ep == 'qio.import_page' }}" href="{{ url_for('qio.import_page') }}">{{ icon('upload', 16) }}{{ t('excel_import_title') }}</a>
-</div>
