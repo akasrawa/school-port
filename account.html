@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('nav_account') }} · {{ t('app_name') }}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <form class="card auth-card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h1>{{ t('nav_account') }}</h1>
+    <p class="muted small"><span dir="auto">{{ t('username') }}: <b>{{ user.username }}</b></span> · {{ t('role_' + user.role) }}</p>
+    <label class="field"><span>{{ t('full_name') }}</span>
+      <input type="text" name="name" value="{{ user.name }}" maxlength="100" required></label>
+    <fieldset class="fieldset">
+      <legend>{{ t('change_password') }}</legend>
+      <label class="field"><span>{{ t('current_password') }}</span>
+        <input type="password" name="current_password" autocomplete="current-password" dir="ltr"></label>
+      <label class="field"><span>{{ t('new_password') }}</span>
+        <input type="password" name="new_password" autocomplete="new-password" minlength="4" dir="ltr"></label>
+    </fieldset>
+    <button class="btn primary block" type="submit">{{ t('save') }}</button>
+  </form>
+</div>
+{% endblock %}

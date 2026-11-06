@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% from '_macros.html' import empty %}
+{% block title %}{{ t('backups_title') }} · {{ t('app_name') }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ t('backups_title') }}</h1><p class="muted">{{ t('backups_sub') }}</p></div>
+  <div class="inline-actions">
+    {% if on_disk %}
+    <form method="post" action="{{ url_for('admin.backup_create') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn primary" type="submit">{{ icon('database', 16) }}{{ t('backup_create') }}</button></form>
+    {% endif %}
+    <a class="btn success" href="{{ url_for('admin.backup_download_now') }}">{{ icon('download', 16) }}{{ t('download_backup_now') }}</a>
+  </div>
+</div>
+{% include 'admin/_subnav.html' %}
+{% if not on_disk %}
+<div class="alert warning">{{ icon('alert', 16) }} {{ t('backups_cloud_note') }}</div>
+{% else %}
+<div class="alert info">{{ icon('clock', 16) }}
+  {% if hours|int > 0 %}{{ t('auto_backup_on', hours=hours, keep=keep) }}{% else %}{{ t('auto_backup_off') }}{% endif %}
+  <a href="{{ url_for('admin.settings') }}">{{ t('change') }}</a></div>
+{% endif %}
+
+{% if on_disk %}
+<div class="card table-card">
+  {% if not items %}{{ empty(t('no_backups')) }}{% else %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>{{ t('backup_file') }}</th><th>{{ t('backup_kind') }}</th><th>{{ t('backup_date') }}</th><th>{{ t('backup_size') }}</th><th>{{ t('backup_contents') }}</th><th></th></tr></thead>
+    <tbody>
+    {% for b in items %}
+      <tr>
+        <td data-label="{{ t('backup_file') }}"><code dir="ltr" class="small">{{ b.name }}</code></td>
+        <td data-label="{{ t('backup_kind') }}"><span class="badge {{ 'blue' if b.kind == 'manual' else ('gray' if b.kind == 'auto' else 'amber') }}">{{ t('backup_kind_' + b.kind.replace('-', '_')) }}</span></td>
+        <td data-label="{{ t('backup_date') }}">{{ b.mtime | local_time }}</td>
+        <td data-label="{{ t('backup_size') }}" dir="ltr">{{ (b.size / 1024) | round(1) }} KB</td>
+        <td data-label="{{ t('backup_contents') }}" class="small muted">{% if b.counts %}{{ b.counts.users }} {{ t('users_word') }} · {{ b.counts.forms }} {{ t('stat_exams') }} · {{ b.counts.attempts }} {{ t('attempts') }}{% endif %}</td>
+        <td class="actions">
+          <a class="btn sm outline" href="{{ url_for('admin.backup_download', name=b.name) }}">{{ icon('download', 14) }}<span class="hide-sm">{{ t('download') }}</span></a>
+          <details class="menu">
+            <summary class="btn sm ghost" aria-label="{{ t('more') }}">⋯</summary>
+            <div class="menu-pop">
+              <form method="post" action="{{ url_for('admin.backup_restore') }}" onsubmit="var v=prompt('{{ t('restore_prompt') }}');if(v!=='RESTORE'){return false;}this.confirm.value=v;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="name" value="{{ b.name }}"><input type="hidden" name="confirm" value="">
+                <button type="submit">{{ icon('refresh', 14) }}{{ t('restore') }}</button></form>
+              <form method="post" action="{{ url_for('admin.backup_delete', name=b.name) }}" data-confirm="{{ t('confirm_delete_backup') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="danger-text">{{ icon('trash', 14) }}{{ t('delete') }}</button></form>
+            </div>
+          </details>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form class="card" method="post" action="{{ url_for('admin.backup_restore') }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h3>{{ icon('upload', 18) }} {{ t('restore_from_file') }}</h3>
+  <div class="alert warning">{{ icon('alert', 16) }} {{ t('restore_warning') }}</div>
+  <div class="row-2">
+    <label class="field"><span>{{ t('backup_file') }} (.zip / .sqlite3)</span><input type="file" name="file" accept=".zip,.sqlite3,.db" required></label>
+    <label class="field"><span>{{ t('restore_type') }}</span><input type="text" name="confirm" required dir="ltr" placeholder="RESTORE" autocomplete="off" pattern="RESTORE"></label>
+  </div>
+  <button class="btn danger" type="submit">{{ icon('refresh', 16) }}{{ t('restore') }}</button>
+</form>
+{% endblock %}

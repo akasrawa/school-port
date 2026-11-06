@@ -1,0 +1,10 @@
+{% if classes %}
+<fieldset class="fieldset">
+  <legend>{{ legend }}</legend>
+  <div class="check-grid">
+  {% for c in classes %}
+    <label class="check"><input type="checkbox" name="class_ids" value="{{ c.id }}" {{ 'checked' if c.id in checked }}><span>{{ c.name }}</span></label>
+  {% endfor %}
+  </div>
+</fieldset>
+{% endif %}

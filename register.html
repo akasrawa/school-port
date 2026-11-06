@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('nav_register') }} · {{ t('app_name') }}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <form class="card auth-card" method="post" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <h1>{{ t('register_title') }}</h1>
+    {% if allowed|length > 1 %}
+    <div class="segmented" role="radiogroup" aria-label="{{ t('role') }}">
+      <a href="{{ url_for('auth.register', role='student', next=next) }}" class="{{ 'on green' if role == 'student' }}" role="radio" aria-checked="{{ 'true' if role == 'student' else 'false' }}">{{ t('role_student') }}</a>
+      <a href="{{ url_for('auth.register', role='teacher', next=next) }}" class="{{ 'on blue' if role == 'teacher' }}" role="radio" aria-checked="{{ 'true' if role == 'teacher' else 'false' }}">{{ t('role_teacher') }}</a>
+    </div>
+    {% endif %}
+    <input type="hidden" name="role" value="{{ role }}">
+    <label class="field"><span>{{ t('full_name') }}</span>
+      <input type="text" name="name" autocomplete="name" required maxlength="100" value="{{ request.form.get('name', '') }}"></label>
+    <label class="field"><span>{{ t('username') }}</span>
+      <input type="text" name="username" autocomplete="username" autocapitalize="none" required maxlength="80" dir="auto" value="{{ request.form.get('username', '') }}">
+      <small class="muted">{{ t('username_hint') }}</small></label>
+    <label class="field"><span>{{ t('email') }} <em class="muted">({{ t('optional') }})</em></span>
+      <input type="email" name="email" autocomplete="email" dir="ltr" value="{{ request.form.get('email', '') }}"></label>
+    <label class="field"><span>{{ t('password') }}</span>
+      <input type="password" name="password" autocomplete="new-password" minlength="4" required dir="ltr">
+      <small class="muted">{{ t('password_hint') }}</small></label>
+    {% if role == 'student' %}
+    <label class="field"><span>{{ t('class_code') }} <em class="muted">({{ t('optional') }})</em></span>
+      <input type="text" name="join_code" dir="ltr" maxlength="12" value="{{ request.form.get('join_code', '') }}">
+      <small class="muted">{{ t('class_code_hint') }}</small></label>
+    {% endif %}
+    <button class="btn {{ 'success' if role == 'student' else 'primary' }} block" type="submit">{{ t('nav_register') }}</button>
+    <p class="muted small center">{{ t('have_account') }} <a href="{{ url_for('auth.login', next=next) }}">{{ t('nav_login') }}</a></p>
+  </form>
+</div>
+{% endblock %}
