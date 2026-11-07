@@ -39,7 +39,6 @@
         {% elif user and user.role == 'teacher' %}
           <a href="{{ url_for('teacher.dashboard') }}" class="{{ 'active' if ep in ('teacher.dashboard', 'teacher.edit_form', 'teacher.submissions', 'teacher.analytics', 'teacher.attempt_detail') }}">{{ icon('home', 16) }}<span>{{ t('nav_dashboard') }}</span></a>
           <a href="{{ url_for('teacher.classes') }}" class="{{ 'active' if ep.startswith('teacher.class') }}">{{ icon('book', 16) }}<span>{{ t('nav_classes') }}</span></a>
-          <a href="{{ url_for('teacher.bank') }}" class="{{ 'active' if ep == 'teacher.bank' }}">{{ icon('bookmark', 16) }}<span>{{ t('bank_title') }}</span></a>
           {% if setting_flag('teachers_manage_students') %}
           <a href="{{ url_for('users.index') }}" class="{{ 'active' if ep.startswith('users.') }}">{{ icon('users', 16) }}<span>{{ t('nav_students') }}</span></a>
           {% endif %}

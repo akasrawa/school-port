@@ -22,8 +22,9 @@
     {% if attempt.late %}<div class="alert error">{{ t('note_late') }}</div>{% endif %}
     {% if attempt.is_preview %}<div class="alert info">{{ t('owner_preview_note') }}</div>{% endif %}
     <div class="inline-actions center">
-      {% if user and user.role == 'teacher' %}
-        <a class="btn outline" href="{{ url_for('teacher.edit_form', fid=form.id) }}">{{ icon('edit', 16) }}{{ t('edit') }}</a>
+      {% if user and user.role in ('teacher', 'admin') %}
+        <a class="btn outline" href="{{ url_for('teacher.results') }}">← {{ t('results_title') }}</a>
+        {% if not attempt.is_preview %}<a class="btn primary" href="{{ url_for('teacher.attempt_detail', aid=attempt.id) }}">{{ icon('edit', 16) }}{{ t('col_grading') }}</a>{% endif %}
       {% elif user %}
         <a class="btn outline" href="{{ url_for('exam.student_dashboard') }}">{{ t('nav_my_exams') }}</a>
       {% else %}

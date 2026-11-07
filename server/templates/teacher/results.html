@@ -39,7 +39,7 @@
     <thead><tr>
       <th>{{ t('col_name') }}</th><th>{{ t('subject') }}</th><th>{{ t('exam') }}</th>
       {% if is_admin %}<th>{{ t('role_teacher') }}</th>{% endif %}
-      <th>{{ t('col_score') }}</th><th>{{ t('col_status') }}</th><th>{{ t('col_submitted') }}</th><th></th>
+      <th>{{ t('col_score') }}</th><th>{{ t('col_status') }}</th><th>{{ t('col_grading') }}</th><th></th>
     </tr></thead>
     <tbody>
     {% for a in rows %}
@@ -50,7 +50,10 @@
         {% if is_admin %}<td data-label="{{ t('role_teacher') }}">{{ a.teacher_name or '-' }}</td>{% endif %}
         <td data-label="{{ t('col_score') }}">{{ score_pill(a, a.pass_percent) }}</td>
         <td data-label="{{ t('col_status') }}">{{ attempt_status(a) }}</td>
-        <td data-label="{{ t('col_submitted') }}" class="small">{{ a.submitted_at | local_time }}</td>
+        <td data-label="{{ t('col_grading') }}" class="flags">
+          <a class="btn sm {{ 'primary' if a.status == 'submitted' else 'outline' }}" href="{{ url_for('teacher.attempt_detail', aid=a.id) }}">{{ icon('edit', 14) }}{{ t('regrade_this') if a.status == 'submitted' else t('edit_grade') }}</a>
+          <a class="btn sm outline" href="{{ url_for('exam.result', aid=a.id) }}" title="{{ t('review_answers') }}">{{ icon('eye', 14) }}{{ t('view') }}</a>
+        </td>
         <td class="actions">
           <a class="act act-gray" href="{{ url_for('teacher.print_attempt', aid=a.id) }}" target="_blank" data-tip="{{ t('print_sheet') }}" aria-label="{{ t('print_sheet') }}">{{ icon('print', 17) }}</a>
         </td>

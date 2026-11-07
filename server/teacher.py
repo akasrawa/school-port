@@ -923,12 +923,8 @@ def answer_file(answer_id):
            JOIN forms f ON f.id=a.form_id WHERE an.id=?""",
         (answer_id,),
     ).fetchone()
-    if row is None or not row["file_path"]:
+    if row is None or not (is_admin() or row["teacher_id"] == g.user["id"]) or not row["file_path"]:
         abort(404)
-    if not (is_admin() or row["teacher_id"] == g.user["id"]):
-        allowed = manageable_student_ids(get_db())  # her own students (results list → print)
-        if not (row["student_id"] and allowed and row["student_id"] in allowed):
-            abort(404)
     from . import storage
 
     data, mime = storage.load("answers", row["file_path"])
@@ -1516,7 +1512,7 @@ def _results_filters():
 
 
 def _results_rows(db, flt, limit=2000):
-    """Submitted attempts. Admin: everyone. Teacher: only students registered under her (her classes / created by her)."""
+    """Submitted attempts. Admin: everyone. Teacher: only attempts on exams she owns."""
     sql = """SELECT a.id, a.form_id, a.user_id, a.taker_name, a.attempt_no, a.status, a.total_score, a.max_score,
              a.submitted_at, a.late, a.auto_submitted, a.violations,
              f.title AS form_title, f.subject, f.grade, f.pass_percent, u.username, tu.name AS teacher_name,
@@ -1526,13 +1522,9 @@ def _results_rows(db, flt, limit=2000):
              LEFT JOIN users u ON u.id=a.user_id LEFT JOIN users tu ON tu.id=f.teacher_id
              WHERE a.is_preview=0 AND a.status!='in_progress'"""
     args = []
-    allowed = manageable_student_ids(db)
-    if allowed is not None:
-        if not allowed:
-            return []
-        ids = sorted(allowed)
-        sql += " AND a.user_id IN (%s)" % ",".join("?" * len(ids))
-        args += ids
+    if not is_admin():
+        sql += " AND f.teacher_id=?"
+        args.append(g.user["id"])
     if flt["student"]:
         sql += " AND (a.taker_name LIKE ? OR u.username LIKE ?)"
         args += [f"%{flt['student']}%"] * 2
@@ -1611,28 +1603,12 @@ def results_xlsx():
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-def _attempt_for_print(aid):
-    """Owner/admin, or a teacher printing the sheet of one of her own students (from the results list)."""
-    db = get_db()
-    row = db.execute(
-        "SELECT a.*, f.teacher_id FROM attempts a JOIN forms f ON f.id=a.form_id WHERE a.id=?", (aid,)
-    ).fetchone()
-    if row is None:
-        abort(404)
-    if is_admin() or row["teacher_id"] == g.user["id"]:
-        return row
-    allowed = manageable_student_ids(db)
-    if row["user_id"] and allowed and row["user_id"] in allowed:
-        return row
-    abort(404)
-
-
 @bp.get("/attempts/<int:aid>/print")
 @login_required("staff")
 def print_attempt(aid):
     from .utils import number_words
 
-    attempt = _attempt_for_print(aid)
+    attempt = own_attempt(aid)
     db = get_db()
     form = db.execute("SELECT * FROM forms WHERE id=?", (attempt["form_id"],)).fetchone()
     answers = {r["question_id"]: r for r in db.execute("SELECT * FROM answers WHERE attempt_id=?", (aid,))}

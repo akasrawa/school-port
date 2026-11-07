@@ -645,7 +645,7 @@ def result(aid):
     if attempt["status"] == "in_progress":
         return redirect(url_for("exam.take", aid=aid))
     db = get_db()
-    viewer_is_teacher = g.user is not None and g.user["role"] == "teacher"
+    viewer_is_teacher = is_owner(form)  # exam's teacher or the principal: always sees the full review
     show_score = viewer_is_teacher or form["show_results"] == "immediate" or (
         form["show_results"] == "after_grading" and attempt["status"] == "graded"
     )
