@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% from '_macros.html' import attempt_status, score_pill %}
+{% block title %}{{ attempt.taker_name }} · {{ form.title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('teacher.submissions', fid=form.id) }}">← {{ t('submissions') }}</a>
+    <h1>{{ attempt.taker_name }}</h1>
+    <p class="muted">{{ form.title }} · {{ t('col_attempt') }} #{{ attempt.attempt_no }}{% if student %} · <span dir="auto">{{ student.username }}</span>{% endif %}</p>
+  </div>
+  <div class="summary-box">
+    {{ score_pill(attempt, form.pass_percent) }}
+    {{ attempt_status(attempt) }}
+    <a class="btn sm outline" href="{{ url_for('teacher.print_attempt', aid=attempt.id) }}" target="_blank">{{ icon('print', 14) }}{{ t('print_sheet') }}</a>
+    {% if attempt.user_id %}
+    <form method="post" action="{{ url_for('teacher.allow_retake', fid=form.id, uid=attempt.user_id) }}" data-confirm="{{ t('confirm_retake', name=attempt.taker_name) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ request.path }}">
+      <button class="btn sm outline" type="submit">{{ icon('refresh', 14) }}{{ t('allow_retake') }}</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="meta-grid">
+  <div class="card meta"><span class="muted small">{{ t('col_started') }}</span><b>{{ attempt.started_at | local_time }}</b></div>
+  <div class="card meta"><span class="muted small">{{ t('col_submitted') }}</span><b>{{ attempt.submitted_at | local_time }}</b></div>
+  <div class="card meta"><span class="muted small">{{ t('col_minutes') }}</span><b>{{ ((attempt.submitted_at - attempt.started_at) | duration) if attempt.submitted_at else '-' }}</b></div>
+  <div class="card meta {{ 'warn' if attempt.violations }}"><span class="muted small">{{ t('violations') }}</span><b>{{ attempt.violations }}</b></div>
+</div>
+
+{% if attempt.late or attempt.auto_submitted %}
+<div class="alert info">
+  {% if attempt.late %}{{ t('note_late') }} {% endif %}{% if attempt.auto_submitted %}{{ t('note_auto') }}{% endif %}
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('teacher.grade_attempt', aid=attempt.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="review-list">
+    {% for it in items %}
+    {% set q = it.q %}{% set qd = (q.extra or {}).get('dir') or 'auto' %}
+    {% if it.section %}
+    <section class="card review-sec">
+      {% if q.text %}<h3 dir="auto">{{ q.text | rich }}</h3>{% endif %}
+      {% if q.image %}<img class="q-img sm" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}
+      {% if q.description and q.description.strip() %}<div class="passage" dir="auto">{{ q.description | rich }}</div>{% endif %}
+    </section>
+    {% else %}
+    {% set a = it.answer %}
+    <article class="card review-q {{ 'needs' if it.manual_type and (a is none or not a.manual) and it.max > 0 }}">
+      <header>
+        <span class="badge blue">{{ it.n }}</span>
+        <span class="badge gray">{{ t('type_' + q.type) }}</span>
+        {% if it.max > 0 %}<span class="muted small">{{ t('points') }}: {{ fmt_num(it.max) }}</span>{% endif %}
+        {% if a and a.points is not none and it.max > 0 and not it.manual_type %}
+          {% if a.points >= it.max %}<span class="badge green">{{ icon('check', 12) }}</span>
+          {% elif a.points > 0 %}<span class="badge amber">~</span>
+          {% else %}<span class="badge red">{{ icon('x', 12) }}</span>{% endif %}
+        {% endif %}
+      </header>
+      <h3 class="q-text" dir="{{ qd }}">{{ q.text | rich }}</h3>
+      {% if q.description and q.description.strip() %}<p class="q-desc" dir="{{ qd }}">{{ q.description | rich }}</p>{% endif %}
+      {% if q.image %}<img class="q-img sm" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}{% if q.audio %}<audio class="q-audio" controls preload="none" src="{{ media_url(q.audio) }}"></audio>{% endif %}
+      <div class="answer-box">
+        <span class="muted small">{{ t('student_answer') }}</span>
+        {% if q.type == 'draw' %}
+          {% if a and a.file_path %}<a href="{{ url_for('teacher.answer_file', answer_id=a.id, inline=1) }}" target="_blank"><img class="drawn-answer" src="{{ url_for('teacher.answer_file', answer_id=a.id, inline=1) }}" alt="{{ t('student_answer') }}"></a>{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
+        {% elif q.type == 'file' %}
+          {% if a and a.file_path %}<a class="btn outline sm" href="{{ url_for('teacher.answer_file', answer_id=a.id) }}">{{ icon('download', 14) }}{{ a.file_name }}</a>{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
+        {% elif q.type == 'match' %}
+          <div class="match-review" dir="{{ qd }}">{% for r in match_rows(q, it.value) %}
+            <div class="mr-row"><span class="mr-left">{{ loop.index }}. {% if r.left_img %}<img src="{{ media_url(r.left_img) }}" alt="">{% endif %}{{ r.left | rich }}</span><span class="mr-arrow">⟵</span>
+              <span class="mr-given {{ 'empty' if not r.answered }}">{% if r.given_img %}<img src="{{ media_url(r.given_img) }}" alt="">{% endif %}{{ r.given or '—' }}</span></div>
+          {% endfor %}</div>
+        {% elif q.type == 'fill' %}
+          <div class="fill-line" dir="{{ qd }}">{% for p in fill_parts(q) %}{% if p.blank is defined %}{% set given = it.value[p.blank] if it.value and p.blank < it.value|length else '' %}<span class="fill-blank {{ 'empty' if not given }}">{{ given or '…' }}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
+        {% else %}
+          {% set txt = answer_text(q, it.value) %}
+          {% set pics = answer_images(q, it.value) %}
+          {% if txt or pics %}<div class="answer-text" dir="{{ qd }}">{{ txt }}</div>{% for pic in pics %}<img class="answer-pic" src="{{ media_url(pic) }}" alt="">{% endfor %}{% else %}<em class="muted">{{ t('no_answer') }}</em>{% endif %}
+        {% endif %}
+      </div>
+      {% set ct = correct_text(q) %}
+      {% if not is_manual(q) and q.type not in ['scale', 'date', 'section'] %}
+      <div class="answer-box correct">
+        <span class="muted small">{{ t('correct_answer') }}</span>
+        <div class="answer-text" dir="auto">{{ ct if ct else t('no_key') }}</div>
+      </div>
+      {% endif %}
+      {% set per_blank = q.type == 'fill' and it.manual_type and it.max > 0 and it.blanks > 0 %}
+      {% if per_blank %}
+      <div class="blank-grade" data-blank-grade data-max="{{ it.max }}" data-target="points_{{ q.id }}">
+        <span class="muted small">{{ t('blank_marks') }}</span>
+        {% for i in range(it.blanks) %}
+        {% set given = it.value[i] if it.value and i < it.value|length else '' %}
+        {% set mk = it.marks[i] if i < it.marks|length else none %}
+        {% set half = it.share / 2 %}
+        <div class="bg-row">
+          <div class="bg-info"><span class="muted small">{{ t('blank_n_label', n=i + 1) }}</span><b class="bg-ans" dir="{{ qd }}">{{ given or '—' }}</b></div>
+          <input type="hidden" name="blank_{{ q.id }}_{{ i }}" value="{{ fmt_num(mk) if mk is not none else '' }}">
+          <div class="bg-btns" role="radiogroup" aria-label="{{ t('blank_n_label', n=i + 1) }}">
+            {% for val, label, cls in [(it.share, fmt_num(it.share), 'full'), (half, '½' if it.share == 1 else fmt_num(half), 'half'), (0, '0', 'zero')] %}
+            <button type="button" class="bg-btn {{ cls }} {{ 'on' if mk is not none and (mk - val)|abs < 0.001 }}" data-val="{{ val }}">{{ label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if it.max > 0 %}
+      <div class="grade-row">
+        <label class="field inline"><span>{{ t('score') }}</span>
+          <input type="number" step="0.25" min="0" max="{{ it.max }}" name="points_{{ q.id }}" id="points_{{ q.id }}" dir="ltr" data-points
+                 value="{{ fmt_num(a.points) if a and a.points is not none else '' }}" placeholder="0 – {{ fmt_num(it.max) }}" {{ 'readonly' if per_blank }}>
+          <span class="muted">/ {{ fmt_num(it.max) }}</span></label>
+        {% if it.manual_type and not per_blank %}
+        <div class="quick">
+          <button type="button" class="chip" data-quick="{{ it.max }}">{{ t('full_marks') }}</button>
+          <button type="button" class="chip" data-quick="{{ it.max / 2 }}">{{ t('half_marks') }}</button>
+          <button type="button" class="chip" data-quick="0">0</button>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      <label class="field"><span>{{ t('note_for_student') }}</span>
+        <textarea name="feedback_{{ q.id }}" rows="2" maxlength="2000" placeholder="{{ t('feedback_ph') }}">{{ a.feedback if a and a.feedback else '' }}</textarea></label>
+    </article>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="sticky-bar card">
+    <div><b>{{ t('col_score') }}:</b> <span class="live-total" id="live-total" dir="ltr">{{ fmt_num(attempt.total_score) }} / {{ fmt_num(attempt.max_score) }}</span></div>
+    <div class="inline-actions">
+      <button class="btn outline" type="submit">{{ icon('check', 16) }}{{ t('save_grades') }}</button>
+      <button class="btn primary" type="submit" name="next_pending" value="1">{{ t('next_student') }} ←</button>
+    </div>
+  </div>
+</form>
+
+{% if events %}
+<section class="card">
+  <h3>{{ icon('shield', 18) }} {{ t('activity_log') }}</h3>
+  <ul class="log">
+    {% for e in events %}<li><span class="muted small">{{ e.at | local_time('time') }}</span> {{ t('event_' + e.type) }}{% if e.detail %} <span class="muted small">({{ e.detail }})</span>{% endif %}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var maxScore = {{ attempt.max_score | tojson }};
+    function fmt(n) { return String(Math.round(n * 100) / 100); }
+    function total() {
+      var sum = 0;
+      document.querySelectorAll('[data-points]').forEach(function (el) { sum += parseFloat(el.value) || 0; });
+      document.getElementById('live-total').textContent = fmt(sum) + ' / ' + fmt(maxScore);
+    }
+    function blankTotal(box) {
+      var max = parseFloat(box.getAttribute('data-max')) || 0, sum = 0, any = false;
+      box.querySelectorAll('input[type=hidden]').forEach(function (h) { if (h.value !== '') { any = true; sum += parseFloat(h.value) || 0; } });
+      var target = document.getElementById(box.getAttribute('data-target'));
+      if (target && any) target.value = fmt(Math.min(max, sum));
+    }
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-quick]');
+      if (b) { b.closest('.grade-row').querySelector('input[type=number]').value = b.getAttribute('data-quick'); total(); return; }
+      var g = e.target.closest('.bg-btn');
+      if (g) {
+        var row = g.closest('.bg-row');
+        row.querySelectorAll('.bg-btn').forEach(function (x) { x.classList.toggle('on', x === g); });
+        row.querySelector('input[type=hidden]').value = g.getAttribute('data-val');
+        blankTotal(g.closest('[data-blank-grade]'));
+        total();
+      }
+    });
+    document.addEventListener('input', function (e) { if (e.target.matches('[data-points]')) total(); });
+    total();
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% from '_macros.html' import attempt_status %}
+{% block title %}{{ form.title }} · {{ t('app_name') }}{% endblock %}
+{% block content %}
+<div class="landing">
+  <article class="card landing-card">
+    <span class="eyebrow">{{ t('exam') }}</span>
+    <h1 dir="auto">{{ form.title }}</h1>
+    {% if teacher %}<p class="muted">{{ icon('user', 14) }} {{ teacher.name }}</p>{% endif %}
+    {% if form.description %}<p class="landing-desc" dir="auto">{{ form.description }}</p>{% endif %}
+
+    <ul class="facts">
+      <li>{{ icon('file', 18) }}<span><b>{{ questions|length }}</b> {{ t('questions') }}</span></li>
+      <li>{{ icon('check', 18) }}<span><b>{{ fmt_num(total_points) }}</b> {{ t('points') }}</span></li>
+      <li>{{ icon('clock', 18) }}<span><b>{{ form.time_limit_min if form.time_limit_min else '∞' }}</b> {{ t('min') if form.time_limit_min else t('no_limit') }}</span></li>
+      <li>{{ icon('refresh', 18) }}<span><b>{{ form.max_attempts if form.max_attempts else '∞' }}</b> {{ t('attempts') }}</span></li>
+      <li>{{ icon('chart', 18) }}<span><b>{{ form.pass_percent }}%</b> {{ t('pass_mark') }}</span></li>
+    </ul>
+
+    {% if form.detect_tabs or form.block_copy or form.require_fullscreen %}
+    <div class="alert info">{{ icon('shield', 16) }} {{ t('landing_monitored') }}</div>
+    {% endif %}
+    {% if form.opens_at %}<p class="muted small">{{ t('opens_at') }}: {{ form.opens_at | local_time }}</p>{% endif %}
+    {% if form.closes_at %}<p class="muted small">{{ t('closes_at') }}: {{ form.closes_at | local_time }}</p>{% endif %}
+
+    {% if owner %}<div class="alert info">{{ t('owner_preview_note') }}</div>{% endif %}
+
+    {% if state != 'open' and not owner %}
+      <div class="alert error">
+        {% if state == 'draft' %}{{ t('state_draft_msg') }}{% elif state == 'not_open' %}{{ t('state_not_open_msg') }}{% else %}{{ t('state_closed_msg') }}{% endif %}
+      </div>
+    {% elif reason == 'login' %}
+      <div class="alert info">{{ t('login_required_exam') }}</div>
+      <div class="inline-actions">
+        <a class="btn primary" href="{{ url_for('auth.login', next=request.path) }}">{{ t('nav_login') }}</a>
+        <a class="btn outline" href="{{ url_for('auth.register', role='student', next=request.path) }}">{{ t('nav_register') }}</a>
+      </div>
+    {% elif reason %}
+      <div class="alert error">{{ t(reason) }}</div>
+    {% elif exhausted and not running %}
+      <div class="alert error">{{ t('no_attempts_left') }}</div>
+    {% elif running %}
+      <a class="btn primary lg" href="{{ url_for('exam.take', aid=running.id) }}">{{ icon('play', 18) }}{{ t('continue_exam') }}</a>
+    {% elif not questions %}
+      <div class="alert error">{{ t('exam_unavailable') }}</div>
+    {% else %}
+      <form method="post" action="{{ url_for('exam.start', code=form.code) }}" class="start-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if not user %}
+        <label class="field"><span>{{ t('your_name') }}</span><input type="text" name="taker_name" maxlength="100" required autocomplete="name"></label>
+        {% endif %}
+        <button class="btn success lg" type="submit">{{ icon('play', 18) }}{{ t('start_exam') if not owner else t('start_preview') }}</button>
+      </form>
+    {% endif %}
+  </article>
+
+  {% if attempts %}
+  <aside class="card">
+    <h3>{{ t('your_attempts') }}</h3>
+    <ul class="feed">
+      {% for a in attempts %}
+      <li>
+        <span>#{{ a.attempt_no }}{% if a.is_preview %} <span class="badge gray">{{ t('preview') }}</span>{% endif %} <span class="muted small">{{ a.started_at | local_time }}</span></span>
+        <div class="feed-side">{{ attempt_status(a) }}<a class="btn sm outline" href="{{ url_for('exam.result' if a.status != 'in_progress' else 'exam.take', aid=a.id) }}">{{ t('view') }}</a></div>
+      </li>
+      {% endfor %}
+    </ul>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

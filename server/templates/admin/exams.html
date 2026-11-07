@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% from '_icons.html' import icon %}
+{% from '_macros.html' import empty %}
+{% block title %}{{ t('nav_exams') }} · {{ t('app_name') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ t('all_exams') }}</h1>
+    <p class="muted">{{ t('all_exams_sub') }}</p>
+  </div>
+  <form method="post" action="{{ url_for('teacher.new_form') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn primary" type="submit">{{ icon('plus', 16) }}{{ t('new_exam') }}</button>
+  </form>
+</div>
+{% set action = url_for('admin.exams') %}
+{% include 'teacher/_search.html' %}
+{% include 'teacher/_exam_list.html' %}
+{% endblock %}

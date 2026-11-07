@@ -1,0 +1,1807 @@
+/* Exam builder (v4).
+   Storage is unchanged from earlier versions: question text keeps **bold** / __underline__ marks, blanks stay
+   [word] / [word|alternative] / [ ] (empty, manual grading). New presentation-only data lives in q.extra. */
+(function () {
+  "use strict";
+
+  var builder = document.getElementById("builder");
+  if (!builder) return;
+
+  var data = JSON.parse(document.getElementById("form-data").textContent);
+  var T = JSON.parse(document.getElementById("i18n-data").textContent);
+  var api = window.App.api;
+  var toast = window.App.toast;
+
+  var GRADED = ["mcq", "checkbox", "dropdown", "truefalse", "short", "number", "match", "fill", "order"];
+  var CHOICE = ["mcq", "checkbox", "dropdown"];
+  var UNSCORED = ["scale", "date", "section"];
+  var MANUAL = ["paragraph", "file", "draw"];
+  var TYPES = ["mcq", "checkbox", "dropdown", "truefalse", "short", "fill", "order", "match", "number", "paragraph", "draw", "file", "section", "scale", "date"];
+  var GROUPS = [["qgroup_choice", ["mcq", "checkbox", "dropdown", "truefalse"]],
+    ["qgroup_write", ["short", "fill", "order", "number", "paragraph", "draw"]],
+    ["qgroup_other", ["match", "section", "file", "scale", "date"]]];
+  var BLANK_RE = /\[([^\[\]\n]+)\]/g;
+  var INV = "⁣"; /* invisible text given to picture-only options so they stay distinct */
+
+  var settings = data.settings;
+  var questions = data.questions;
+  questions.forEach(function (q) { q.extra = q.extra && typeof q.extra === "object" ? q.extra : {}; });
+  var revision = 0, savedRevision = 0, saving = false, saveTimer = null, retryTimer = null, retryDelay = 3000;
+  var pendingFocus = null, activeIndex = 0, previewTimer = null, device = "phone";
+
+  var list = $("q-list");
+  var summary = $("summary");
+  var saveState = $("save-state");
+  var preview = $("preview-body");
+
+  function $(id) { return document.getElementById(id); }
+  function fmt(text, values) {
+    return String(text || "").replace(/\{(\w+)\}/g, function (m, key) { return values && values[key] !== undefined ? values[key] : m; });
+  }
+  function h(tag, props, children) {
+    var el = document.createElement(tag);
+    props = props || {};
+    Object.keys(props).forEach(function (key) {
+      var value = props[key];
+      if (value === undefined || value === null || value === false) return;
+      if (key === "class") el.className = value;
+      else if (key === "text") el.textContent = value;
+      else if (key === "html") el.innerHTML = value;
+      else if (key === "value") el.value = value;
+      else if (key.slice(0, 2) === "on") el.addEventListener(key.slice(2), value);
+      else el.setAttribute(key, value === true ? "" : value);
+    });
+    (children || []).forEach(function (child) {
+      if (child) el.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+    });
+    return el;
+  }
+  function esc(s) {
+    return String(s === undefined || s === null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  /* same marks as the server's |rich filter */
+  function rich(text) {
+    var html = esc(text);
+    html = html.replace(/__([^_\s](?:[^\n]*?[^_\s])?)__/g, "<u>$1</u>").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+    return html.replace(/\n/g, "<br>");
+  }
+  function media(name) { return data.mediaBase.replace("__NAME__", name); }
+  function num(n) { return Math.round((parseFloat(n) || 0) * 100) / 100; }
+  function shown(text) { return String(text || "").split(INV).join(""); }
+
+  var ICONS = {
+    up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    minus: '<path d="M5 12h14"/>',
+    grip: '<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>',
+    bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+    mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>',
+    music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/>',
+    clip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+    alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>', spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+    cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="m9 13 2 2 4-4"/>',
+    cloudoff: '<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2"/><path d="M21.53 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10.5 5.07"/>',
+    spin: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>', blank: '<path d="M4 17h16"/><path d="M8 13h8"/><path d="M12 5v4"/>',
+    eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    star: '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>'
+  };
+  function icon(name, size) {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (size || 16) + '" height="' + (size || 16) +
+      '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (ICONS[name] || "") + "</svg>";
+  }
+  function iconButton(name, label, onClick, extra) {
+    extra = extra || {};
+    return h("button", {
+      type: "button", class: "icon-btn" + (extra.danger ? " danger" : "") + (extra.extraClass ? " " + extra.extraClass : ""),
+      title: label, "aria-label": label, html: icon(name, 16), onclick: onClick, disabled: !!extra.disabled
+    });
+  }
+  function chipButton(iconName, label, onClick, cls) {
+    var b = h("button", { type: "button", class: "chip " + (cls || ""), html: (iconName ? icon(iconName, 14) : "") + "<span></span>", onclick: onClick });
+    b.querySelector("span").textContent = label;
+    return b;
+  }
+
+  /* ================= state ================= */
+  function touch(q) {
+    revision += 1;
+    if (q) refreshCardState(q);
+    setSaveState("saving");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { save(); }, 1200);
+    updateSummary();
+    schedulePreview();
+  }
+
+  function setSaveState(state, message) {
+    var map = {
+      saved: ["ok", "cloud", T.saved_ok],
+      saving: ["busy", "spin", T.saving_now],
+      offline: ["off", "cloudoff", T.offline_retry],
+      error: ["err", "alert", message || T.save_needs_fix],
+      idle: ["", "", ""]
+    };
+    var m = map[state] || map.idle;
+    saveState.className = "save-state " + m[0];
+    saveState.innerHTML = m[1] ? icon(m[1], 14) + "<span></span>" : "";
+    if (m[1]) saveState.querySelector("span").textContent = m[2];
+  }
+
+  function newQuestion(type) {
+    var manual = GRADED.indexOf(type) !== -1 && !!data.defaultManual;
+    var q = {
+      id: null, type: type, text: "", description: "", image: "", audio: "", extra: {},
+      points: UNSCORED.indexOf(type) !== -1 ? 0 : (type === "match" || type === "fill" ? 2 : 1),
+      required: type !== "section", options: null, correct: null, explanation: "", partial: false,
+      manual_grade: manual
+    };
+    applyTypeDefaults(q);
+    if (type === "fill") q.options.bank = !manual;
+    return q;
+  }
+
+  function applyTypeDefaults(q) {
+    if (CHOICE.indexOf(q.type) !== -1) {
+      if (!Array.isArray(q.options)) q.options = ["", ""];
+    } else if (q.type === "scale") {
+      if (!q.options || q.options.max === undefined) q.options = { max: 5, min_label: "", max_label: "", style: "stars" };
+    } else if (q.type === "draw") {
+      if (!q.options || q.options.height === undefined) q.options = { lines: true, height: 380 };
+    } else if (q.type === "match") {
+      if (!q.options || !Array.isArray(q.options.pairs)) q.options = { pairs: [["", ""], ["", ""], ["", ""]], distractors: [] };
+    } else if (q.type === "fill") {
+      if (!q.options || typeof q.options.template !== "string") q.options = { template: "", bank: !q.manual_grade, distractors: [] };
+    } else {
+      q.options = null;
+    }
+  }
+
+  function changeType(q, type) {
+    var wasChoice = CHOICE.indexOf(q.type) !== -1;
+    var oldCorrect = q.correct;
+    var wasUnscored = UNSCORED.indexOf(q.type) !== -1;
+    var wasGraded = GRADED.indexOf(q.type) !== -1;
+    q.type = type;
+    if (!wasGraded && GRADED.indexOf(type) !== -1) q.manual_grade = !!data.defaultManual;
+    if (!(wasChoice && CHOICE.indexOf(type) !== -1)) q.options = null;
+    applyTypeDefaults(q);
+    q.correct = null;
+    if (wasChoice && CHOICE.indexOf(type) !== -1) {
+      if (type === "checkbox") q.correct = Array.isArray(oldCorrect) ? oldCorrect : (typeof oldCorrect === "number" ? [oldCorrect] : null);
+      else q.correct = Array.isArray(oldCorrect) ? (oldCorrect.length ? oldCorrect[0] : null) : (typeof oldCorrect === "number" ? oldCorrect : null);
+    }
+    if (UNSCORED.indexOf(type) !== -1) q.points = 0;
+    else if (wasUnscored) q.points = 1;
+    if (type === "section") q.required = false;
+    if (type !== "checkbox") q.partial = false;
+    delete q.extra.option_images; delete q.extra.left_images; delete q.extra.right_images;
+  }
+
+  function blanksOf(q) {
+    var out = [];
+    String((q.options && q.options.template) || "").replace(BLANK_RE, function (m, inner) { out.push(inner); return m; });
+    return out;
+  }
+  function altsOf(raw) { return String(raw || "").split("|").map(function (s) { return s.trim(); }).filter(Boolean); }
+
+  /* What is missing? "" = complete */
+  function issueOf(q) {
+    if (q.type === "section") return "";
+    if (!String(q.text || "").trim()) return T.warn_no_text;
+    if (CHOICE.indexOf(q.type) !== -1) {
+      var filled = q.options.filter(function (o, i) { return String(o).trim() || imgAt(q, "option_images", i); }).length;
+      if (filled < 2) return T.warn_two_options;
+    }
+    if (q.type === "match" && !(q.options.pairs || []).some(function (p, i) {
+      return (String(p[0]).trim() || imgAt(q, "left_images", i)) && (String(p[1]).trim() || imgAt(q, "right_images", i));
+    })) return T.warn_add_pair;
+    if (q.type === "fill" && !blanksOf(q).length) return T.warn_add_blank;
+    if (q.type === "order" && !(q.correct || []).length) return T.warn_add_answer;
+    if (GRADED.indexOf(q.type) === -1 || q.manual_grade) return "";
+    if (q.type === "fill") return blanksOf(q).every(function (b) { return altsOf(b).length; }) ? "" : T.warn_blank_answers;
+    if (q.type === "match" || q.type === "order") return "";
+    var c = q.correct;
+    var missing = c === null || c === undefined || (Array.isArray(c) && !c.length);
+    if (!missing) return "";
+    return (CHOICE.indexOf(q.type) !== -1 || q.type === "truefalse") ? T.warn_pick_correct : T.warn_add_answer;
+  }
+
+  function imgAt(q, key, i) { var a = q.extra && q.extra[key]; return a && a[i] ? a[i] : ""; }
+  function setImg(q, key, i, name, size) {
+    var a = (q.extra[key] || []).slice(0, size);
+    while (a.length < size) a.push("");
+    a[i] = name || "";
+    q.extra[key] = a;
+    if (!a.some(Boolean)) delete q.extra[key];
+  }
+
+  /* ================= card ================= */
+  function cardClass(q) {
+    var c = "card qcard t-" + q.type + (q._collapsed ? " collapsed" : "");
+    if (q.type === "section") return c + " section";
+    if (GRADED.indexOf(q.type) !== -1 && q.manual_grade) c += " manual no-key";
+    else if (MANUAL.indexOf(q.type) !== -1) c += " manual";
+    else if (UNSCORED.indexOf(q.type) !== -1) c += " info";
+    if (issueOf(q)) c += " warn";
+    return c;
+  }
+
+  function modeBadge(q) {
+    if (q.type === "section") return null;
+    if (UNSCORED.indexOf(q.type) !== -1) return h("span", { class: "badge gray", text: T.not_counted });
+    var manual = MANUAL.indexOf(q.type) !== -1 || q.manual_grade;
+    return h("span", { class: "badge " + (manual ? "amber" : "green"), text: manual ? T.grading_manual : T.grading_auto });
+  }
+
+  function statusEl(q) {
+    var issue = issueOf(q);
+    if (q.type === "section") return h("span", { class: "q-status" });
+    if (issue) return h("span", { class: "q-status warn", html: icon("alert", 14) + "<span></span>" }, []);
+    return h("span", { class: "q-status ok", title: T.complete, html: icon("check", 15) });
+  }
+  function fillStatus(el, q) {
+    var issue = issueOf(q);
+    el.className = "q-status" + (q.type === "section" ? "" : issue ? " warn" : " ok");
+    el.innerHTML = q.type === "section" ? "" : issue ? icon("alert", 14) + "<span></span>" : icon("check", 15);
+    if (issue) el.querySelector("span").textContent = issue;
+  }
+
+  function refreshCardState(q) {
+    if (!q._el) return;
+    q._el.className = cardClass(q) + (q._el.classList.contains("focus") ? " focus" : "");
+    if (q._status) fillStatus(q._status, q);
+    if (q._sumText) {
+      var first = String(q.text || "").split("\n")[0];
+      q._sumText.textContent = first || (q.type === "section" ? T.type_section : T.untitled_question);
+      q._sumText.classList.toggle("empty", !first);
+    }
+    if (q._pts) q._pts.textContent = fmt(T.n_points, { n: num(q.points) });
+  }
+
+  function renderCard(q, index) {
+    var card = h("article", { class: cardClass(q), "data-index": index });
+    q._el = card;
+    var number = questions.slice(0, index + 1).filter(function (x) { return x.type !== "section"; }).length;
+
+    var grip = h("span", { class: "grip", title: T.drag_hint, html: icon("grip", 16) });
+    grip.addEventListener("pointerdown", function (event) { startDrag(event, index, card); });
+
+    var numEl = h("span", { class: "q-num" + (q.type === "section" ? " sec" : ""), text: q.type === "section" ? "§" : String(number) });
+    q._sumText = h("span", { class: "q-sum-text", dir: q.extra.dir || "auto" });
+    q._pts = UNSCORED.indexOf(q.type) === -1 ? h("span", { class: "badge gray pts-chip" }) : null;
+    q._status = h("span", { class: "q-status" });
+    fillStatus(q._status, q);
+
+    if (q._collapsed) {
+      var row = h("button", { type: "button", class: "q-collapsed", "aria-expanded": "false",
+        onclick: function () { q._collapsed = false; activeIndex = index; pendingFocus = { q: q }; render(); } }, [
+        numEl, q._sumText,
+        h("span", { class: "badge soft type-chip-sm", text: T["type_" + q.type] }),
+        q._pts, q._status, h("span", { class: "chev", html: icon("down", 16) })
+      ]);
+      card.appendChild(h("div", { class: "qcard-row" }, [grip, row]));
+      refreshCardState(q);
+      return card;
+    }
+
+    var typeSelect = h("select", { class: "qtype", "aria-label": fmt(T.question_n, { n: number }),
+      onchange: function () { changeType(q, typeSelect.value); touch(q); render(); } });
+    TYPES.forEach(function (type) {
+      var o = h("option", { value: type, text: T["type_" + type] });
+      if (type === q.type) o.selected = true;
+      typeSelect.appendChild(o);
+    });
+
+    var head = h("div", { class: "qcard-head" }, [
+      grip, numEl, typeSelect, modeBadge(q), q._pts, h("span", { class: "spacer" }), q._status,
+      h("div", { class: "qcard-tools" }, [
+        iconButton("up", T.collapse, function () { q._collapsed = true; render(); }, { extraClass: "collapse-btn" }),
+        iconButton("up", T.move_up, function () { move(index, -1); }, { disabled: index === 0 }),
+        iconButton("down", T.move_down, function () { move(index, 1); }, { disabled: index === questions.length - 1 }),
+        iconButton("copy", T.duplicate, function () { duplicate(index); }),
+        iconButton("bookmark", T.bank_save_one, function () { saveToBank(q); }),
+        iconButton("plus", T.insert_here, function (e) { openTypePicker(e.currentTarget, index + 1); }, { extraClass: "add" }),
+        iconButton("trash", T.remove, function () { remove(index); }, { danger: true })
+      ])
+    ]);
+
+    var fields = h("div", { class: "q-fields qcard-body" });
+    fields.appendChild(textEditor(q));
+    if (q.type === "section") {
+      var body = h("textarea", { rows: "6", maxlength: "6000", dir: q.extra.dir || "auto", placeholder: T.section_body, "aria-label": T.section_body,
+        oninput: function () { q.description = body.value; touch(q); } });
+      body.value = q.description || "";
+      fields.appendChild(body);
+      fields.appendChild(h("p", { class: "q-hint", text: T.section_note }));
+    } else {
+      var hintInput = h("input", { type: "text", maxlength: "1500", dir: q.extra.dir || "auto", placeholder: T.question_help, "aria-label": T.question_help,
+        value: q.description, oninput: function () { q.description = hintInput.value; touch(q); } });
+      fields.appendChild(hintInput);
+    }
+
+    var bodyEl = null;
+    if (CHOICE.indexOf(q.type) !== -1) bodyEl = renderChoice(q);
+    else if (q.type === "truefalse") bodyEl = renderTrueFalse(q);
+    else if (q.type === "short") bodyEl = renderShort(q);
+    else if (q.type === "number") bodyEl = renderNumber(q);
+    else if (q.type === "scale") bodyEl = renderScale(q);
+    else if (q.type === "match") bodyEl = renderMatch(q);
+    else if (q.type === "fill") bodyEl = renderFill(q);
+    else if (q.type === "order") bodyEl = renderOrder(q);
+    else if (q.type === "draw") bodyEl = renderDraw(q);
+    if (bodyEl) fields.appendChild(bodyEl);
+
+    if (q.type === "paragraph") fields.appendChild(h("p", { class: "q-hint", text: T.manual_grade_note }));
+    if (q.type === "file") fields.appendChild(h("p", { class: "q-hint", text: T.file_upload_note }));
+    if (GRADED.indexOf(q.type) !== -1 && q.manual_grade && q.type !== "fill" && q.type !== "truefalse") {
+      fields.appendChild(h("p", { class: "q-hint warn", text: T.manual_no_key }));
+    }
+    if (UNSCORED.indexOf(q.type) !== -1 && q.type !== "section") fields.appendChild(h("p", { class: "q-hint", text: T.info_only_note }));
+
+    if (GRADED.indexOf(q.type) !== -1 || MANUAL.indexOf(q.type) !== -1) {
+      var explanation = h("input", { type: "text", maxlength: "2000", value: q.explanation, dir: q.extra.dir || "auto",
+        placeholder: T.explanation + " (" + T.explanation_hint + ")", "aria-label": T.explanation,
+        oninput: function () { q.explanation = explanation.value; touch(q); } });
+      fields.appendChild(explanation);
+    }
+    fields.appendChild(footRow(q));
+    card.appendChild(head);
+    card.appendChild(fields);
+    refreshCardState(q);
+    return card;
+  }
+
+  function footRow(q) {
+    var row = h("div", { class: "q-row q-foot" });
+    var autoFill = q.type === "fill" && !q.manual_grade;
+    if (UNSCORED.indexOf(q.type) === -1) {
+      var points = h("input", { type: "number", min: "0", max: "1000", step: "any", dir: "ltr", value: q.points, "aria-label": T.points,
+        readonly: autoFill, title: autoFill ? T.fill_points_auto : null,
+        oninput: function () { var n = parseFloat(points.value); q.points = isNaN(n) ? 0 : n; touch(q); } });
+      q._pointsInput = points;
+      row.appendChild(h("label", { class: "pts" }, [h("span", { text: T.points }), points]));
+    }
+    if (q.type !== "section") {
+      var required = h("input", { type: "checkbox", onchange: function () { q.required = required.checked; touch(q); } });
+      required.checked = !!q.required;
+      row.appendChild(h("label", { class: "check switch", style: "margin:0" }, [required, h("span", { text: T.required })]));
+    }
+    if (q.type === "checkbox") {
+      var partial = h("input", { type: "checkbox", onchange: function () { q.partial = partial.checked; touch(q); } });
+      partial.checked = !!q.partial;
+      row.appendChild(h("label", { class: "check", style: "margin:0" }, [partial, h("span", { text: T.partial_credit })]));
+    }
+    if (GRADED.indexOf(q.type) !== -1) {
+      var modeSel = h("div", { class: "grade-mode", role: "radiogroup", "aria-label": T.grading_mode });
+      [["auto", T.grading_auto], ["manual", T.grading_manual]].forEach(function (m) {
+        modeSel.appendChild(h("button", { type: "button", class: "gm" + ((m[0] === "manual") === !!q.manual_grade ? " on" : ""), text: m[1],
+          onclick: function () {
+            var manual = m[0] === "manual";
+            if (manual === !!q.manual_grade) return;
+            q.manual_grade = manual;
+            if (q.type === "fill") {
+              if (!q._bankTouched) q.options.bank = !manual; /* word box: on for auto, off for manual by default */
+              if (!manual) syncFillPoints(q);
+            }
+            touch(q); render();
+          } }));
+      });
+      row.appendChild(h("span", { class: "spacer" }));
+      row.appendChild(h("span", { class: "gm-label", text: T.grading_mode }));
+      row.appendChild(modeSel);
+    }
+    return row;
+  }
+
+  /* ---------- question text: toolbar (B, U, formula, direction, picture, sound, recording, file) ---------- */
+  function textEditor(q) {
+    var box = h("div", { class: "text-box" });
+    var area = h("textarea", { rows: q.type === "section" ? "1" : "2", maxlength: "1500", dir: q.extra.dir || "auto", "data-q-text": "1",
+      placeholder: q.type === "section" ? T.section_title : T.question_text, "aria-label": T.question_text,
+      oninput: function () { q.text = area.value; area.classList.remove("invalid"); touch(q); } });
+    area.value = q.text;
+
+    function wrap(mark) {
+      var s = area.selectionStart, e = area.selectionEnd, v = area.value;
+      var sel = v.slice(s, e);
+      area.value = v.slice(0, s) + mark + sel + mark + v.slice(e);
+      area.focus();
+      area.setSelectionRange(s + mark.length, e + mark.length);
+      q.text = area.value; touch(q);
+    }
+    function setDir(dir) {
+      q.extra.dir = q.extra.dir === dir ? "" : dir;
+      if (!q.extra.dir) delete q.extra.dir;
+      touch(q); render();
+    }
+    var bar = h("div", { class: "fmt-bar", role: "toolbar", "aria-label": T.format_bar });
+    function tb(html, label, fn, cls) {
+      var b = h("button", { type: "button", class: "fmt " + (cls || ""), title: label, "aria-label": label, html: html,
+        onmousedown: function (e) { e.preventDefault(); }, onclick: fn });
+      bar.appendChild(b);
+      return b;
+    }
+    tb("<b>B</b>", T.fmt_bold, function () { wrap("**"); });
+    tb("<u>U</u>", T.fmt_underline, function () { wrap("__"); });
+    tb("√x", T.fmt_math, function (e) { openMath(e.currentTarget, area, q); }, "math");
+    bar.appendChild(h("span", { class: "fmt-sep" }));
+    tb("ع ←", T.dir_rtl, function () { setDir("rtl"); }, "dir" + (q.extra.dir === "rtl" ? " on" : ""));
+    tb("EN →", T.dir_ltr, function () { setDir("ltr"); }, "dir" + (q.extra.dir === "ltr" ? " on" : ""));
+    bar.appendChild(h("span", { class: "fmt-sep" }));
+    var imgInput = fileInput("image/*", function (f) { upload(f, f.name, null, function (res) { q.image = res.name; touch(q); render(); }); });
+    var audInput = fileInput("audio/*", function (f) { upload(f, f.name, null, function (res) { q.audio = res.name; touch(q); render(); }); });
+    var attInput = fileInput(".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv", function (f) {
+      upload(f, f.name, "attach", function (res) { q.extra.attachment = { name: res.name, label: res.label || f.name }; touch(q); render(); });
+    });
+    tb(icon("image", 15), q.image ? T.change_image : T.add_image, function () { imgInput.click(); });
+    tb(icon("music", 15), T.add_audio, function () { audInput.click(); });
+    var recBtn = tb(icon("mic", 15), T.record_audio, function () { record(q, recBtn); });
+    tb(icon("clip", 15), T.add_file, function () { attInput.click(); });
+    box.appendChild(bar);
+    box.appendChild(area);
+    [imgInput, audInput, attInput].forEach(function (i) { box.appendChild(i); });
+
+    var strip = h("div", { class: "media-strip" });
+    if (q.image) strip.appendChild(h("span", { class: "media-item" }, [
+      h("img", { src: media(q.image), alt: "", class: "q-img-thumb" }),
+      iconButton("x", T.remove_image, function () { q.image = ""; touch(q); render(); }, { danger: true })]));
+    if (q.audio) strip.appendChild(h("span", { class: "media-item" }, [
+      h("audio", { controls: true, preload: "none", src: media(q.audio) }),
+      iconButton("x", T.remove_audio, function () { q.audio = ""; touch(q); render(); }, { danger: true })]));
+    if (q.extra.attachment) strip.appendChild(h("span", { class: "media-item file" }, [
+      h("span", { html: icon("clip", 14) }), h("a", { href: media(q.extra.attachment.name) + "?name=" + encodeURIComponent(q.extra.attachment.label || ""), target: "_blank", text: q.extra.attachment.label || q.extra.attachment.name }),
+      iconButton("x", T.remove, function () { delete q.extra.attachment; touch(q); render(); }, { danger: true })]));
+    if (strip.children.length) box.appendChild(strip);
+    return box;
+  }
+
+  function fileInput(accept, onFile) {
+    var input = h("input", { type: "file", accept: accept, hidden: true });
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      input.value = "";
+      if (f) onFile(f);
+    });
+    return input;
+  }
+
+  function upload(fileOrBlob, filename, kind, done) {
+    var body = new FormData();
+    body.append("file", fileOrBlob, filename);
+    if (kind) body.append("kind", kind);
+    toast(T.uploading);
+    api(data.imageUrl, { body: body }).then(function (res) {
+      if (!res.ok) { toast(res.error || T.image_error); return; }
+      done(res);
+    }).catch(function () { toast(T.image_error); });
+  }
+
+  var recorder = null;
+  function record(q, btn) {
+    if (recorder && recorder.state === "recording") { recorder.stop(); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder) { toast(T.mic_denied); return; }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var chunks = [];
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+      recorder.onstop = function () {
+        stream.getTracks().forEach(function (tr) { tr.stop(); });
+        var type = recorder.mimeType || "audio/webm";
+        var ext = type.indexOf("mp4") !== -1 ? "m4a" : (type.indexOf("ogg") !== -1 ? "ogg" : "webm");
+        btn.classList.remove("rec");
+        upload(new Blob(chunks, { type: type }), "recording." + ext, null, function (res) { q.audio = res.name; touch(q); render(); });
+      };
+      recorder.start();
+      btn.classList.add("rec");
+      toast(T.recording);
+    }).catch(function () { toast(T.mic_denied); });
+  }
+
+  /* ---------- LaTeX formula box ---------- */
+  var mathPop = null;
+  function closePop() { if (mathPop) { mathPop.remove(); mathPop = null; } }
+  function openMath(anchor, target, q) {
+    closePop();
+    var start = target.selectionStart, end = target.selectionEnd;
+    var input = h("input", { type: "text", dir: "ltr", class: "math-input", placeholder: "F = m \\cdot a", spellcheck: "false" });
+    var out = h("div", { class: "math-out", dir: "ltr" });
+    function draw() {
+      var v = input.value.trim();
+      if (!v) { out.textContent = ""; return; }
+      window.MathView.toString(v, true).then(function (html) { if (html) out.innerHTML = html; else out.textContent = v; });
+    }
+    input.addEventListener("input", draw);
+    var snippets = [["a/b", "\\frac{a}{b}"], ["x²", "^{2}"], ["√x", "\\sqrt{x}"], ["π", "\\pi"], ["±", "\\pm"], ["≥", "\\geq"], ["≤", "\\leq"], ["×", "\\times"], ["÷", "\\div"], ["°", "^{\\circ}"]];
+    var quick = h("div", { class: "math-quick" });
+    snippets.forEach(function (s) {
+      quick.appendChild(h("button", { type: "button", text: s[0], onclick: function () {
+        var p = input.selectionStart || input.value.length;
+        input.value = input.value.slice(0, p) + s[1] + input.value.slice(input.selectionEnd || p);
+        input.focus(); draw();
+      } }));
+    });
+    var insert = h("button", { type: "button", class: "btn primary sm", text: T.insert, onclick: function () {
+      var v = input.value.trim();
+      if (!v) { closePop(); return; }
+      var snippet = "\\( " + v + " \\)";
+      var val = target.value;
+      target.value = val.slice(0, start) + snippet + val.slice(end);
+      q.text = target.value;
+      closePop();
+      target.focus();
+      target.setSelectionRange(start + snippet.length, start + snippet.length);
+      touch(q);
+    } });
+    mathPop = h("div", { class: "pop math-pop", role: "dialog", "aria-label": T.fmt_math }, [
+      h("b", { text: T.math_title }), input, out, quick,
+      h("div", { class: "pop-foot" }, [h("small", { class: "muted", text: T.math_hint }), insert])
+    ]);
+    placePop(mathPop, anchor);
+    input.focus();
+  }
+  function placePop(pop, anchor) {
+    document.body.appendChild(pop);
+    var r = anchor.getBoundingClientRect();
+    var w = pop.offsetWidth;
+    var left = Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2));
+    pop.style.top = (window.scrollY + r.bottom + 6) + "px";
+    pop.style.left = (window.scrollX + left) + "px";
+  }
+  document.addEventListener("mousedown", function (e) {
+    if (mathPop && !mathPop.contains(e.target) && !e.target.closest(".fmt.math")) closePop();
+    if (picker && !picker.contains(e.target) && !e.target.closest("[data-picker]")) closePicker();
+  });
+
+  /* ---------- choices ---------- */
+  function renderChoice(q) {
+    var manual = !!q.manual_grade;
+    var multi = q.type === "checkbox";
+    var wrap = h("div", { class: "opt-editor" });
+    var name = "pick-" + (q._k || (q._k = Math.random().toString(36).slice(2)));
+    var head = h("div", { class: "opt-head" }, [h("b", { text: T.options_label }),
+      manual ? null : h("small", { class: "muted", text: multi ? T.pick_correct_multi : T.pick_correct_hint })]);
+    q.options.forEach(function (text, index) {
+      var checked = !manual && (multi ? (q.correct || []).indexOf(index) !== -1 : q.correct === index);
+      var line = h("div", { class: "opt-line" + (checked ? " correct" : "") });
+      var pick = h("input", { type: multi ? "checkbox" : "radio", name: name, class: "pick", "aria-label": T.correct_answer + " " + (index + 1),
+        onchange: function () {
+          if (multi) {
+            var set = (q.correct || []).filter(function (i) { return i !== index; });
+            if (pick.checked) set.push(index);
+            set.sort(function (a, b) { return a - b; });
+            q.correct = set.length ? set : null;
+          } else {
+            q.correct = index;
+          }
+          touch(q); render();
+        } });
+      pick.checked = checked;
+      var input = h("input", { type: "text", maxlength: "300", value: shown(text), placeholder: fmt(T.option_n, { n: index + 1 }),
+        dir: q.extra.dir || "auto", "data-opt": index,
+        oninput: function () { q.options[index] = input.value; touch(q); },
+        onkeydown: function (event) {
+          if (event.key === "Enter" && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); addOption(q, index + 1); }
+        },
+        onpaste: function (event) {
+          var text = (event.clipboardData || window.clipboardData).getData("text");
+          var rows = String(text || "").split(/\r?\n/).map(cleanListItem).filter(Boolean);
+          if (rows.length < 2) return;
+          event.preventDefault();
+          var before = JSON.parse(JSON.stringify({ o: q.options, c: q.correct, i: q.extra.option_images || null }));
+          rows.forEach(function (row, k) {
+            var at = index + k;
+            if (at < q.options.length && (k === 0 || !String(q.options[at]).trim())) q.options[at] = row;
+            else q.options.splice(at, 0, row);
+          });
+          q.options = q.options.slice(0, 30);
+          q._undo = before;
+          q._undoMsg = fmt(T.pasted_n, { n: rows.length });
+          touch(q); render();
+        } });
+      var mark = manual ? h("span", { class: "opt-bullet", "aria-hidden": "true" }) : pick;
+      line.appendChild(mark);
+      line.appendChild(input);
+      if (checked) line.appendChild(h("span", { class: "correct-tag", text: T.correct_tag }));
+      if (q.type !== "dropdown") {
+        var img = imgAt(q, "option_images", index);
+        if (img) line.appendChild(h("span", { class: "opt-img" }, [h("img", { src: media(img), alt: "" }),
+          h("button", { type: "button", class: "img-x", title: T.remove_image, html: icon("x", 12), onclick: function () { setImg(q, "option_images", index, "", q.options.length); touch(q); render(); } })]));
+        var picker = fileInput("image/*", function (f) { upload(f, f.name, null, function (res) { setImg(q, "option_images", index, res.name, q.options.length); touch(q); render(); }); });
+        line.appendChild(picker);
+        line.appendChild(iconButton("image", T.option_image, function () { picker.click(); }, { extraClass: "ghosty" }));
+      }
+      line.appendChild(iconButton("x", T.remove, function () { removeOption(q, index); }, { danger: true, disabled: q.options.length <= 2, extraClass: "ghosty" }));
+      wrap.appendChild(line);
+    });
+    var box = h("div", { class: "q-fields" }, [head, wrap]);
+    if (q._undo) {
+      box.appendChild(h("div", { class: "undo-bar" }, [h("span", { text: q._undoMsg }),
+        h("button", { type: "button", class: "link", text: T.undo, onclick: function () {
+          q.options = q._undo.o; q.correct = q._undo.c;
+          if (q._undo.i) q.extra.option_images = q._undo.i; else delete q.extra.option_images;
+          delete q._undo; touch(q); render();
+        } })]));
+      setTimeout(function () { if (q._undo) { delete q._undo; } }, 8000);
+    }
+    var tools = h("div", { class: "opt-tools" }, [chipButton("plus", T.add_option, function () { addOption(q, q.options.length); })]);
+    if (q.type !== "dropdown" || true) tools.appendChild(chipButton("spark", T.ai_distractors, function () { suggestDistractors(q, sugBox); }, "ai"));
+    tools.appendChild(h("small", { class: "muted", text: T.options_tip }));
+    box.appendChild(tools);
+    var sugBox = h("div", { class: "sug-box", hidden: true });
+    box.appendChild(sugBox);
+    return box;
+  }
+
+  function cleanListItem(line) {
+    return String(line).replace(/^\s*(?:[-*•▪◦·]|\(?[0-9٠-٩]+[.)\-]|\(?[a-zA-Zأ-ي][.)])\s+/, "").trim();
+  }
+
+  function addOption(q, at) {
+    if (q.options.length >= 30) return;
+    q.options.splice(at, 0, "");
+    if (Array.isArray(q.correct)) q.correct = q.correct.map(function (i) { return i >= at ? i + 1 : i; });
+    else if (typeof q.correct === "number" && q.correct >= at) q.correct += 1;
+    if (q.extra.option_images) q.extra.option_images.splice(at, 0, "");
+    pendingFocus = { q: q, opt: at };
+    touch(q); render();
+  }
+
+  function removeOption(q, index) {
+    if (q.options.length <= 2) return;
+    q.options.splice(index, 1);
+    if (q.extra.option_images) { q.extra.option_images.splice(index, 1); if (!q.extra.option_images.some(Boolean)) delete q.extra.option_images; }
+    if (Array.isArray(q.correct)) {
+      q.correct = q.correct.filter(function (i) { return i !== index; }).map(function (i) { return i > index ? i - 1 : i; });
+      if (!q.correct.length) q.correct = null;
+    } else if (typeof q.correct === "number") {
+      if (q.correct === index) q.correct = null;
+      else if (q.correct > index) q.correct -= 1;
+    }
+    touch(q); render();
+  }
+
+  function suggestDistractors(q, box) {
+    if (!data.aiEnabled) { toast(data.isAdmin ? T.ai_disabled_admin : T.ai_disabled); return; }
+    box.hidden = false;
+    box.textContent = T.ai_thinking;
+    api(data.aiUrl, { json: { mode: "distractors", question: q.text, options: q.options, correct: q.correct } }).then(function (res) {
+      box.textContent = "";
+      if (!res.ok) { box.textContent = res.error || T.ai_failed; return; }
+      if (!(res.options || []).length) { box.textContent = T.ai_none_new; return; }
+      box.appendChild(h("b", { class: "sug-title", html: icon("spark", 13) + " " + esc(T.ai_suggested) }));
+      var chips = h("div", { class: "sug-chips" });
+      res.options.forEach(function (o) {
+        chips.appendChild(h("button", { type: "button", class: "chip", text: "+ " + o, onclick: function (e) {
+          var empty = q.options.indexOf("");
+          if (empty !== -1) q.options[empty] = o; else if (q.options.length < 30) q.options.push(o);
+          e.currentTarget.remove();
+          touch(q); render();
+        } }));
+      });
+      box.appendChild(chips);
+    }).catch(function () { box.textContent = T.ai_failed; });
+  }
+
+  /* ---------- true / false: both buttons always visible ---------- */
+  function renderTrueFalse(q) {
+    var manual = !!q.manual_grade;
+    var box = h("div", { class: "tf-edit" + (manual ? " manual" : "") }, [
+      h("small", { class: "muted", text: manual ? T.tf_manual_hint : T.tf_pick_hint })]);
+    var row = h("div", { class: "tf-row", role: manual ? null : "radiogroup", "aria-label": T.correct_answer });
+    ["true", "false"].forEach(function (value) {
+      var on = !manual && q.correct === value;
+      row.appendChild(h("button", { type: "button", class: "tf-btn" + (on ? " on" : ""), disabled: manual, "aria-pressed": on ? "true" : "false",
+        html: (on ? icon("check", 16) + " " : "") + esc(T[value]),
+        onclick: function () { q.correct = value; touch(q); render(); } }));
+    });
+    box.appendChild(row);
+    if (manual) box.appendChild(h("p", { class: "q-hint warn", text: T.manual_no_key }));
+    return box;
+  }
+
+  function renderShort(q) {
+    var area = h("textarea", { rows: "3", placeholder: T.accepted_answers, dir: q.extra.dir || "auto",
+      oninput: function () {
+        var l = lines(area.value);
+        q.correct = l.length ? l : null;
+        touch(q);
+      } });
+    area.value = Array.isArray(q.correct) ? q.correct.join("\n") : "";
+    return h("div", { class: "q-fields key-only" }, [
+      h("label", { class: "field" }, [h("span", { text: T.accepted_answers }), area, h("small", { class: "muted", text: T.accepted_answers_hint })])]);
+  }
+
+  function renderNumber(q) {
+    var value = h("input", { type: "number", step: "any", dir: "ltr", value: q.correct && q.correct.value !== undefined ? q.correct.value : "" });
+    var tol = h("input", { type: "number", step: "any", min: "0", dir: "ltr", value: q.correct && q.correct.tolerance ? q.correct.tolerance : "" });
+    function sync() {
+      if (value.value === "") q.correct = null;
+      else q.correct = { value: parseFloat(value.value), tolerance: Math.abs(parseFloat(tol.value) || 0) };
+      touch(q);
+    }
+    value.addEventListener("input", sync);
+    tol.addEventListener("input", sync);
+    return h("div", { class: "row-2 key-only" }, [
+      h("label", { class: "field" }, [h("span", { text: T.numeric_answer }), value]),
+      h("label", { class: "field" }, [h("span", { text: T.tolerance }), tol])]);
+  }
+
+  function lines(text) { return String(text || "").split("\n").map(function (s) { return s.trim(); }).filter(Boolean); }
+
+  /* ---------- scale: stars or numbers with a live preview ---------- */
+  function renderScale(q) {
+    var o = q.options;
+    var style = o.style === "stars" ? "stars" : "numbers";
+    var seg = h("div", { class: "seg" });
+    [["stars", T.scale_stars], ["numbers", T.scale_numbers]].forEach(function (s) {
+      seg.appendChild(h("button", { type: "button", class: style === s[0] ? "on" : "", text: s[1], onclick: function () { o.style = s[0]; touch(q); render(); } }));
+    });
+    var max = h("select", { onchange: function () { o.max = parseInt(max.value, 10); touch(q); render(); } });
+    for (var n = 3; n <= 10; n += 1) {
+      var opt = h("option", { value: String(n), text: String(n) });
+      if (o.max === n) opt.selected = true;
+      max.appendChild(opt);
+    }
+    var lo = h("input", { type: "text", maxlength: "60", value: o.min_label || "", placeholder: T.scale_min_label, oninput: function () { o.min_label = lo.value; touch(q); } });
+    var hi = h("input", { type: "text", maxlength: "60", value: o.max_label || "", placeholder: T.scale_max_label, oninput: function () { o.max_label = hi.value; touch(q); } });
+    var pv = h("div", { class: "scale-preview", html: scaleHtml(o, Math.ceil(o.max / 2)) });
+    return h("div", { class: "q-fields" }, [
+      h("div", { class: "q-row" }, [seg, h("label", { class: "pts" }, [h("span", { text: T.scale_size }), max])]),
+      h("div", { class: "row-2" }, [hi, lo]),
+      h("div", { class: "live-box" }, [h("small", { class: "muted", text: style === "stars" ? T.preview_stars : T.preview_numbers }), pv])]);
+  }
+
+  function scaleHtml(o, value) {
+    var out = '<div class="scale-pv ' + (o.style === "stars" ? "stars" : "nums") + '">';
+    for (var i = 1; i <= (o.max || 5); i += 1) {
+      out += o.style === "stars"
+        ? '<span class="st' + (i <= value ? " on" : "") + '">' + icon("star", 22) + "</span>"
+        : '<span class="nb' + (i === value ? " on" : "") + '">' + i + "</span>";
+    }
+    out += "</div>";
+    if (o.min_label || o.max_label) out += '<div class="scale-labels"><span>' + esc(o.min_label) + "</span><span>" + esc(o.max_label) + "</span></div>";
+    return out;
+  }
+
+  /* ---------- matching (text and/or picture on both sides) ---------- */
+  function renderMatch(q) {
+    var wrap = h("div", { class: "pair-editor" });
+    wrap.appendChild(h("div", { class: "pair-line pair-head" }, [h("span", { class: "muted small", text: T.match_left }), h("span"), h("span", { class: "muted small", text: T.match_right }), h("span")]));
+    var size = q.options.pairs.length;
+    q.options.pairs.forEach(function (pair, index) {
+      function side(k, key, ph) {
+        var cell = h("div", { class: "pair-cell" });
+        var img = imgAt(q, key, index);
+        var picker = fileInput("image/*", function (f) { upload(f, f.name, null, function (res) { setImg(q, key, index, res.name, size); touch(q); render(); }); });
+        if (img) cell.appendChild(h("span", { class: "opt-img" }, [h("img", { src: media(img), alt: "" }),
+          h("button", { type: "button", class: "img-x", title: T.remove_image, html: icon("x", 12), onclick: function () { setImg(q, key, index, "", size); touch(q); render(); } })]));
+        else cell.appendChild(iconButton("image", T.option_image, function () { picker.click(); }, { extraClass: "ghosty" }));
+        var input = h("input", { type: "text", maxlength: "300", value: shown(pair[k]), placeholder: ph, dir: q.extra.dir || "auto", "data-opt": k ? null : index,
+          oninput: function () { pair[k] = input.value; touch(q); },
+          onkeydown: function (event) { if (k && event.key === "Enter" && !event.isComposing) { event.preventDefault(); addPair(q); } } });
+        cell.appendChild(input);
+        cell.appendChild(picker);
+        return cell;
+      }
+      var del = iconButton("x", T.remove, function () {
+        if (q.options.pairs.length <= 1) return;
+        q.options.pairs.splice(index, 1);
+        ["left_images", "right_images"].forEach(function (key) { if (q.extra[key]) { q.extra[key].splice(index, 1); if (!q.extra[key].some(Boolean)) delete q.extra[key]; } });
+        touch(q); render();
+      }, { danger: true, disabled: q.options.pairs.length <= 1, extraClass: "ghosty" });
+      wrap.appendChild(h("div", { class: "pair-line" }, [side(0, "left_images", (index + 1) + ". " + T.text_or_image), h("span", { class: "pair-arrow", text: "⟷" }), side(1, "right_images", T.text_or_image), del]));
+    });
+    var extra = h("textarea", { rows: "2", placeholder: T.distractors, oninput: function () { q.options.distractors = lines(extra.value); touch(q); } });
+    extra.value = (q.options.distractors || []).join("\n");
+    return h("div", { class: "q-fields" }, [wrap, h("div", {}, [chipButton("plus", T.add_pair, function () { addPair(q); })]),
+      h("label", { class: "field" }, [h("span", { text: T.distractors }), extra, h("small", { class: "muted", text: T.distractors_hint })]),
+      h("p", { class: "q-hint", text: T.match_images_note })]);
+  }
+  function addPair(q) {
+    if (q.options.pairs.length >= 40) return;
+    q.options.pairs.push(["", ""]);
+    pendingFocus = { q: q, opt: q.options.pairs.length - 1 };
+    touch(q); render();
+  }
+
+  /* ---------- fill in the blanks ---------- */
+  var floatBtn = h("button", { type: "button", class: "float-blank", hidden: true, html: icon("blank", 14) + "<span></span>" });
+  floatBtn.querySelector("span").textContent = T.make_blank;
+  floatBtn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+  document.body.appendChild(floatBtn);
+  var fillCtx = null; /* {q, ed, range, api} of the editor holding the selection */
+
+  document.addEventListener("selectionchange", function () {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var node = sel.anchorNode;
+    var ed = node && (node.nodeType === 1 ? node : node.parentNode).closest && (node.nodeType === 1 ? node : node.parentNode).closest(".fill-ed");
+    if (!ed || !ed._fill) { floatBtn.hidden = true; return; }
+    var range = sel.getRangeAt(0);
+    ed._fill.range = range.cloneRange();
+    fillCtx = ed._fill;
+    var usable = !sel.isCollapsed && range.toString().trim() && !rangeHasChip(range);
+    if (ed._fill.makeBtn) ed._fill.makeBtn.disabled = !usable;
+    if (usable && !ed._fill.q.manual_grade) {
+      var r = range.getBoundingClientRect();
+      floatBtn.hidden = false;
+      floatBtn.style.top = (window.scrollY + r.top - floatBtn.offsetHeight - 8) + "px";
+      floatBtn.style.left = (window.scrollX + r.left + r.width / 2 - floatBtn.offsetWidth / 2) + "px";
+    } else {
+      floatBtn.hidden = true;
+    }
+  });
+  floatBtn.addEventListener("click", function () { if (fillCtx) fillCtx.makeBlank(); floatBtn.hidden = true; });
+
+  function rangeHasChip(range) {
+    var frag = range.cloneContents();
+    return !!(frag.querySelector && frag.querySelector(".fill-chip")) ||
+      !!(range.startContainer.parentNode && range.startContainer.parentNode.closest && range.startContainer.parentNode.closest(".fill-chip"));
+  }
+
+  function syncFillPoints(q) {
+    var count = blanksOf(q).length;
+    var bp = q.options.blank_points;
+    if (!Array.isArray(bp)) return;
+    if (bp.length !== count) {
+      bp = bp.slice(0, count);
+      while (bp.length < count) bp.push(1);
+      q.options.blank_points = bp;
+    }
+    if (!q.manual_grade && count) q.points = num(bp.reduce(function (a, b) { return a + (parseFloat(b) || 0); }, 0));
+  }
+  function blankShare(q, i) {
+    var count = blanksOf(q).length || 1;
+    if (Array.isArray(q.options.blank_points) && q.options.blank_points.length === count) return num(q.options.blank_points[i]);
+    return num((parseFloat(q.points) || 0) / count);
+  }
+  function materialize(q) {
+    var count = blanksOf(q).length;
+    if (!Array.isArray(q.options.blank_points) || q.options.blank_points.length !== count) {
+      var share = num((parseFloat(q.points) || count) / (count || 1)) || 1;
+      q.options.blank_points = [];
+      for (var i = 0; i < count; i += 1) q.options.blank_points.push(share);
+    }
+  }
+
+  function renderFill(q) {
+    var o = q.options;
+    var manual = !!q.manual_grade;
+    var ed = h("div", { class: "fill-ed" + (manual ? " manual" : ""), contenteditable: "true", dir: q.extra.dir || "auto", spellcheck: "false",
+      role: "textbox", "aria-multiline": "true", "aria-label": T.fill_template, "data-placeholder": manual ? T.fill_ph_manual : T.fill_ph_auto });
+    var ctx = { q: q, ed: ed, range: null };
+    ed._fill = ctx;
+
+    function chip(ans) {
+      var c = h("span", { class: "fill-chip", contenteditable: "false", "data-ans": ans });
+      c.appendChild(h("span", { class: "fc-label" }));
+      c.appendChild(h("button", { type: "button", class: "fc-x", tabindex: "-1", title: T.unblank, html: icon("x", 11),
+        onmousedown: function (e) { e.preventDefault(); },
+        onclick: function () {
+          var first = altsOf(c.getAttribute("data-ans"))[0] || "";
+          c.replaceWith(document.createTextNode(first));
+          changed(true);
+        } }));
+      return c;
+    }
+    function relabel() {
+      Array.prototype.forEach.call(ed.querySelectorAll(".fill-chip"), function (c, i) {
+        var alts = altsOf(c.getAttribute("data-ans"));
+        var label = c.querySelector(".fc-label");
+        c.classList.toggle("empty", !alts.length);
+        if (manual || !alts.length) label.textContent = fmt(T.blank_n_label, { n: i + 1 });
+        else label.textContent = alts[0];
+      });
+    }
+    function build() {
+      ed.textContent = "";
+      var text = o.template || "", last = 0, m;
+      function addText(s) {
+        s.split("\n").forEach(function (part, i) {
+          if (i) ed.appendChild(h("br"));
+          if (part) ed.appendChild(document.createTextNode(part));
+        });
+      }
+      BLANK_RE.lastIndex = 0;
+      while ((m = BLANK_RE.exec(text))) {
+        addText(text.slice(last, m.index));
+        ed.appendChild(chip(m[1].trim() ? m[1] : ""));
+        last = m.index + m[0].length;
+      }
+      addText(text.slice(last));
+      relabel();
+    }
+    function serialize() {
+      var out = "";
+      function walk(node) {
+        Array.prototype.forEach.call(node.childNodes, function (child) {
+          if (child.nodeType === 3) out += child.nodeValue.replace(/ /g, " ");
+          else if (child.nodeType === 1) {
+            if (child.classList.contains("fill-chip")) {
+              var ans = altsOf(child.getAttribute("data-ans")).join("|");
+              out += "[" + (ans || " ") + "]";
+            } else if (child.tagName === "BR") out += "\n";
+            else {
+              if ((child.tagName === "DIV" || child.tagName === "P") && out && out.slice(-1) !== "\n") out += "\n";
+              walk(child);
+            }
+          }
+        });
+      }
+      walk(ed);
+      return out.replace(/\n+$/, "");
+    }
+    function changed(rebuildRows) {
+      o.template = serialize();
+      relabel();
+      if (!manual) { syncFillPoints(q); if (q._pointsInput) q._pointsInput.value = q.points; }
+      if (rebuildRows) rows();
+      livePrev();
+      touch(q);
+    }
+    ed.addEventListener("input", function () {
+      var before = blanksOf(q).length;
+      o.template = serialize();
+      changed(blanksOf(q).length !== before);
+    });
+    ed.addEventListener("blur", function () {
+      if (/\[[^\[\]\n]+\]/.test(Array.prototype.map.call(ed.childNodes, function (n) { return n.nodeType === 3 ? n.nodeValue : ""; }).join(""))) { build(); rows(); }
+    });
+    ed.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); document.execCommand("insertLineBreak"); }
+    });
+    ed.addEventListener("paste", function (e) {
+      e.preventDefault();
+      var text = (e.clipboardData || window.clipboardData).getData("text");
+      if (window.App.fixPdfArabic) text = window.App.fixPdfArabic(text);
+      document.execCommand("insertText", false, text);
+    });
+    ed.addEventListener("click", function (e) {
+      var c = e.target.closest(".fill-chip");
+      if (!c || manual) return;
+      var i = Array.prototype.indexOf.call(ed.querySelectorAll(".fill-chip"), c);
+      var input = rowsBox.querySelector('[data-blank="' + i + '"]');
+      if (input) input.focus();
+    });
+
+    function insertNode(range, node, word) {
+      range.deleteContents();
+      var lead = word && /^\s/.test(word) ? " " : "", trail = word && /\s$/.test(word) ? " " : "";
+      if (trail) range.insertNode(document.createTextNode(trail));
+      range.insertNode(node);
+      if (lead) range.insertNode(document.createTextNode(lead));
+      var sel = window.getSelection();
+      var after = document.createRange();
+      after.setStartAfter(node);
+      after.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(after);
+    }
+    ctx.makeBlank = function () {
+      var range = ctx.range;
+      if (!range || !ed.contains(range.commonAncestorContainer)) return;
+      var raw = range.toString();
+      var word = raw.trim();
+      if (!word || rangeHasChip(range)) return;
+      insertNode(range, chip(word.replace(/[\[\]|]/g, "")), raw);
+      changed(true);
+      floatBtn.hidden = true;
+    };
+    ctx.insertBlank = function () {
+      var range = ctx.range && ed.contains(ctx.range.commonAncestorContainer) ? ctx.range : null;
+      if (!range) {
+        range = document.createRange();
+        range.selectNodeContents(ed);
+        range.collapse(false);
+      } else {
+        range.collapse(false);
+      }
+      var node = chip("");
+      range.insertNode(document.createTextNode(" "));
+      range.insertNode(node);
+      var sel = window.getSelection();
+      var after = document.createRange();
+      after.setStartAfter(node.nextSibling || node);
+      after.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(after);
+      ctx.range = after.cloneRange();
+      changed(true);
+    };
+
+    var action;
+    if (manual) {
+      action = h("button", { type: "button", class: "btn outline sm blank-btn", html: icon("blank", 14) + "<span></span>",
+        onmousedown: function (e) { e.preventDefault(); }, onclick: function () { ctx.insertBlank(); } });
+      action.querySelector("span").textContent = T.insert_blank;
+    } else {
+      action = h("button", { type: "button", class: "btn outline sm blank-btn", disabled: true, html: icon("blank", 14) + "<span></span>",
+        onmousedown: function (e) { e.preventDefault(); }, onclick: function () { ctx.makeBlank(); } });
+      action.querySelector("span").textContent = T.make_blank;
+      ctx.makeBtn = action;
+    }
+    var edBox = h("div", { class: "fill-box" }, [
+      h("div", { class: "fill-bar" }, [action, h("small", { class: "muted", text: manual ? T.insert_blank_hint : T.make_blank_hint })]), ed]);
+
+    var rowsBox = h("div", { class: "blank-rows" });
+    function rows() {
+      rowsBox.textContent = "";
+      if (manual) return;
+      var blanks = blanksOf(q);
+      if (!blanks.length) return;
+      rowsBox.appendChild(h("div", { class: "blank-rows-head" }, [h("b", { text: T.blank_rows_title }),
+        h("button", { type: "button", class: "link", text: T.distribute_equally, onclick: function () {
+          var count = blanks.length, total = parseFloat(q.points) || count;
+          var share = num(total / count);
+          o.blank_points = blanks.map(function () { return share; });
+          syncFillPoints(q); if (q._pointsInput) q._pointsInput.value = q.points;
+          rows(); touch(q);
+        } })]));
+      var chips = ed.querySelectorAll(".fill-chip");
+      blanks.forEach(function (raw, i) {
+        var cur = altsOf(raw);  /* [answer, alternative, ...] */
+        function setAlts() {
+          var c = chips[i];
+          if (c) c.setAttribute("data-ans", cur.filter(function (x) { return x; }).join("|"));
+          o.template = serialize(); relabel(); livePrev(); touch(q);
+        }
+        var ans = h("input", { type: "text", class: "blank-ans" + (cur[0] ? "" : " missing"), value: cur[0] || "", placeholder: T.blank_answer_ph,
+          dir: q.extra.dir || "auto", "data-blank": i,
+          oninput: function () {
+            cur[0] = ans.value.replace(/[\[\]|]/g, "").trim();
+            ans.classList.toggle("missing", !cur[0]);
+            setAlts();
+          } });
+        var altBox = h("span", { class: "alt-box" });
+        cur.slice(1).forEach(function (a, k) {
+          altBox.appendChild(h("span", { class: "alt-chip" }, [h("span", { text: a }), h("button", { type: "button", html: icon("x", 10), title: T.remove, onclick: function () {
+            cur.splice(k + 1, 1); setAlts(); rows();
+          } })]));
+        });
+        var addAlt = h("button", { type: "button", class: "link", text: "+ " + T.alt_answer, onclick: function () {
+          var inp = h("input", { type: "text", class: "alt-input", placeholder: T.alt_answer, dir: q.extra.dir || "auto", onkeydown: function (e) {
+            if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+          }, onblur: function () {
+            var v = inp.value.replace(/[\[\]|]/g, "").trim();
+            if (v) { if (!cur.length) cur.push(v); else cur.push(v); setAlts(); }
+            rows();
+          } });
+          addAlt.replaceWith(inp);
+          inp.focus();
+        } });
+        var val = h("span", { class: "step-val", text: String(blankShare(q, i)) });
+        function step(d) {
+          materialize(q);
+          o.blank_points[i] = Math.max(0, num((parseFloat(o.blank_points[i]) || 0) + d));
+          syncFillPoints(q); if (q._pointsInput) q._pointsInput.value = q.points;
+          val.textContent = String(num(o.blank_points[i]));
+          totalEl.textContent = String(num(q.points));
+          touch(q);
+        }
+        var stepper = h("span", { class: "stepper" }, [
+          h("button", { type: "button", html: icon("minus", 12), title: "−", onclick: function () { step(-0.5); } }), val,
+          h("button", { type: "button", html: icon("plus", 12), title: "+", onclick: function () { step(0.5); } })]);
+        rowsBox.appendChild(h("div", { class: "blank-row" }, [h("span", { class: "bn", text: String(i + 1) }), ans, altBox, addAlt, h("span", { class: "spacer" }), stepper]));
+      });
+      var totalEl = h("b", { text: String(num(q.points)) });
+      rowsBox.appendChild(h("div", { class: "blank-total" }, [h("span", { text: T.fill_points_auto }), totalEl]));
+    }
+
+    var bank = h("input", { type: "checkbox", onchange: function () { o.bank = bank.checked; q._bankTouched = true; touch(q); render(); } });
+    bank.checked = !!o.bank;
+    var bankRow = h("label", { class: "check switch bank-toggle", style: "margin:0" }, [bank, h("span", { text: T.word_bank }),
+      h("small", { class: "muted", text: manual ? T.word_bank_manual_note : T.word_bank_auto_note })]);
+    var words = h("input", { type: "text", maxlength: "500", placeholder: manual ? T.bank_words_ph : T.distractors, dir: q.extra.dir || "auto",
+      value: (o.distractors || []).join("، "),
+      oninput: function () { o.distractors = words.value.split(/[,،]/).map(function (s) { return s.trim(); }).filter(Boolean); livePrev(); touch(q); } });
+
+    var prev = h("div", { class: "live-box fill-live" });
+    function livePrev() {
+      prev.innerHTML = '<small class="muted">' + esc(T.student_view) + "</small>" + fillPreviewHtml(q);
+    }
+
+    build();
+    rows();
+    livePrev();
+    var parts = [edBox, rowsBox, bankRow];
+    if (o.bank) parts.push(h("label", { class: "field" }, [h("span", { text: manual ? T.bank_words : T.distractors }), words]));
+    if (manual) {
+      parts.push(h("p", { class: "q-hint warn", text: T.manual_no_key }));
+      parts.push(h("div", { class: "note-card" }, [h("b", { text: T.partial_title }), h("p", { class: "muted small", text: fmt(T.partial_manual_note, { n: num(q.points) }) })]));
+    }
+    parts.push(prev);
+    return h("div", { class: "q-fields" }, parts);
+  }
+
+  function fillPreviewHtml(q) {
+    var o = q.options || {};
+    var text = o.template || "";
+    var html = "", last = 0, m;
+    BLANK_RE.lastIndex = 0;
+    while ((m = BLANK_RE.exec(text))) {
+      html += rich(text.slice(last, m.index)) + '<span class="pv-blank"></span>';
+      last = m.index + m[0].length;
+    }
+    html += rich(text.slice(last));
+    var words = [];
+    if (o.bank) {
+      blanksOf(q).forEach(function (b) { var a = altsOf(b)[0]; if (a) words.push(a); });
+      (o.distractors || []).forEach(function (w) { if (w) words.push(w); });
+      words = words.filter(function (w, i) { return words.indexOf(w) === i; }).sort();
+    }
+    var bankHtml = words.length ? '<div class="pv-bank">' + words.map(function (w) { return "<span>" + esc(w) + "</span>"; }).join("") + "</div>" : "";
+    return '<div class="pv-fill" dir="' + esc(q.extra.dir || "auto") + '">' + html + "</div>" + bankHtml;
+  }
+
+  function renderOrder(q) {
+    var pv = h("div", { class: "chunk-preview", dir: q.extra.dir || "auto" });
+    function refresh() {
+      pv.textContent = "";
+      var first = (q.correct || [])[0] || "";
+      var chunks = first.indexOf("/") !== -1 ? first.split("/") : first.split(/\s+/);
+      chunks.map(function (c) { return c.trim(); }).filter(Boolean).forEach(function (c) { pv.appendChild(h("span", { class: "chunk", text: c })); });
+      pv.hidden = !pv.children.length;
+    }
+    var area = h("textarea", { rows: "2", dir: q.extra.dir || "auto", placeholder: T.order_answer,
+      oninput: function () { var l = lines(area.value); q.correct = l.length ? l : null; refresh(); touch(q); } });
+    area.value = Array.isArray(q.correct) ? q.correct.join("\n") : "";
+    refresh();
+    return h("div", { class: "q-fields" }, [
+      h("label", { class: "field" }, [h("span", { text: T.order_answer }), area, h("small", { class: "muted", text: T.order_answer_hint })]),
+      h("div", {}, [h("small", { class: "muted", text: T.order_preview }), pv])]);
+  }
+
+  function renderDraw(q) {
+    var linesBox = h("input", { type: "checkbox", onchange: function () { q.options.lines = linesBox.checked; touch(q); } });
+    linesBox.checked = q.options.lines !== false;
+    var hSel = h("select", { onchange: function () { q.options.height = parseInt(hSel.value, 10); touch(q); } });
+    [[260, "S"], [380, "M"], [560, "L"], [800, "XL"]].forEach(function (o) {
+      var opt = h("option", { value: String(o[0]), text: T.draw_height + ": " + o[1] });
+      if (q.options.height === o[0]) opt.selected = true;
+      hSel.appendChild(opt);
+    });
+    return h("div", { class: "q-fields" }, [
+      h("div", { class: "q-row" }, [h("label", { class: "check", style: "margin:0" }, [linesBox, h("span", { text: T.draw_lines })]), hSel]),
+      h("p", { class: "q-hint", text: T.draw_note })]);
+  }
+
+  /* ================= type picker (add between questions) ================= */
+  var picker = null;
+  function closePicker() { if (picker) { picker.remove(); picker = null; } }
+  function openTypePicker(anchor, at) {
+    closePicker();
+    picker = h("div", { class: "pop type-pop", role: "dialog", "aria-label": T.add_question }, [h("b", { text: T.add_question_here })]);
+    GROUPS.forEach(function (g) {
+      picker.appendChild(h("small", { class: "muted", text: T[g[0]] }));
+      var row = h("div", { class: "add-types" });
+      g[1].forEach(function (type) {
+        row.appendChild(h("button", { type: "button", class: "type-chip t-" + type, onclick: function () { closePicker(); insertAt(type, at); } },
+          [h("span", { class: "type-ico", text: T["ico_" + type] }), h("span", { text: T["type_" + type] })]));
+      });
+      picker.appendChild(row);
+    });
+    placePop(picker, anchor);
+  }
+  function insertAt(type, at) {
+    var q = newQuestion(type);
+    questions.splice(at, 0, q);
+    activeIndex = at;
+    pendingFocus = { q: q, scroll: true };
+    touch(); render();
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { closePicker(); closePop(); } });
+
+  /* ================= list ================= */
+  function render() {
+    list.textContent = "";
+    floatBtn.hidden = true;
+    if (!questions.length) list.appendChild(h("div", { class: "q-empty", text: T.no_questions }));
+    questions.forEach(function (q, i) {
+      list.appendChild(renderCard(q, i));
+      if (i < questions.length - 1) {
+        var gap = h("div", { class: "q-gap" }, [h("button", { type: "button", class: "gap-add", "data-picker": "1", html: icon("plus", 13) + "<span></span>",
+          onclick: function (e) { openTypePicker(e.currentTarget, i + 1); } })]);
+        gap.querySelector("span").textContent = T.add_question_here;
+        list.appendChild(gap);
+      }
+    });
+    updateSummary();
+    var cards = list.querySelectorAll(".qcard");
+    if (pendingFocus) {
+      var idx = questions.indexOf(pendingFocus.q);
+      var card = cards[idx];
+      var target = card && (pendingFocus.opt !== undefined ? card.querySelector('[data-opt="' + pendingFocus.opt + '"]') : card.querySelector("[data-q-text]"));
+      if (target) {
+        target.focus({ preventScroll: !pendingFocus.scroll });
+        if (pendingFocus.scroll) card.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (idx >= 0) activeIndex = idx;
+      pendingFocus = null;
+    }
+    markActive();
+    renderPreview();
+  }
+
+  function markActive() {
+    Array.prototype.forEach.call(list.querySelectorAll(".qcard"), function (el, i) { el.classList.toggle("focus", i === activeIndex); });
+  }
+
+  function updateSummary() {
+    var total = questions.reduce(function (sum, q) { return sum + (UNSCORED.indexOf(q.type) === -1 ? (parseFloat(q.points) || 0) : 0); }, 0);
+    var count = questions.filter(function (q) { return q.type !== "section"; }).length;
+    var warn = questions.filter(function (q) { return issueOf(q); }).length;
+    summary.textContent = fmt(T.n_questions_short, { n: count }) + " · " + T.total_points + ": " + num(total) + (warn ? " · ⚠ " + warn : "");
+  }
+
+  list.addEventListener("focusin", function (event) {
+    var card = event.target.closest(".qcard");
+    if (!card) return;
+    var i = parseInt(card.getAttribute("data-index"), 10);
+    if (!isNaN(i) && i !== activeIndex) { activeIndex = i; markActive(); renderPreview(); }
+  });
+
+  /* ================= live preview (as the student sees it) ================= */
+  function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 160); }
+
+  function renderPreview() {
+    if (!preview) return;
+    var q = questions[activeIndex] || questions[0];
+    var frame = $("preview-frame");
+    if (frame) frame.className = "pv-frame " + device;
+    if (!q) { preview.innerHTML = '<p class="muted">' + esc(T.no_questions) + "</p>"; return; }
+    var scored = questions.filter(function (x) { return x.type !== "section"; });
+    var pos = scored.indexOf(q) + 1;
+    var dir = q.extra.dir || "auto";
+    var out = "";
+    if (q.type !== "section") {
+      out += '<div class="pv-top"><span>' + esc(fmt(T.q_of_n, { n: pos, total: scored.length })) + "</span>" +
+        (UNSCORED.indexOf(q.type) === -1 ? "<span>" + esc(fmt(T.n_points, { n: num(q.points) })) + "</span>" : "") + "</div>";
+      out += '<div class="pv-bar"><i style="width:' + Math.round(100 * pos / Math.max(1, scored.length)) + '%"></i></div>';
+    }
+    out += '<div class="pv-q" dir="' + esc(dir) + '">' + (rich(q.text) || '<span class="muted">' + esc(T.untitled_question) + "</span>") + "</div>";
+    if (q.type === "section") {
+      if (q.image) out += '<img class="pv-img" src="' + esc(media(q.image)) + '" alt="">';
+      if (q.description) out += '<div class="pv-passage" dir="' + esc(dir) + '">' + rich(q.description) + "</div>";
+    } else {
+      if (q.description) out += '<p class="pv-hint" dir="' + esc(dir) + '">' + rich(q.description) + "</p>";
+      if (q.image) out += '<img class="pv-img" src="' + esc(media(q.image)) + '" alt="">';
+      if (q.audio) out += '<div class="pv-audio">' + icon("music", 14) + " " + esc(T.listen) + "</div>";
+      if (q.extra.attachment) out += '<div class="pv-file">' + icon("clip", 14) + " " + esc(q.extra.attachment.label || "") + "</div>";
+      out += previewBody(q, dir);
+      out += '<div class="pv-next">' + esc(T.next) + "</div>";
+    }
+    preview.innerHTML = out;
+    if (window.MathView) window.MathView.render(preview);
+  }
+
+  function previewBody(q, dir) {
+    var o = q.options;
+    var d = ' dir="' + esc(dir) + '"';
+    if (CHOICE.indexOf(q.type) !== -1) {
+      if (q.type === "dropdown") return '<div class="pv-select"' + d + ">" + esc(T.choose) + " ▾</div>";
+      return (o || []).map(function (opt, i) {
+        if (!String(opt).trim() && !imgAt(q, "option_images", i)) return "";
+        var img = imgAt(q, "option_images", i);
+        return '<div class="pv-opt"' + d + '><span class="pv-mark' + (q.type === "checkbox" ? " sq" : "") + '"></span><span>' + rich(shown(opt)) + "</span>" +
+          (img ? '<img src="' + esc(media(img)) + '" alt="">' : "") + "</div>";
+      }).join("");
+    }
+    if (q.type === "truefalse") return ["true", "false"].map(function (v) { return '<div class="pv-opt"><span class="pv-mark"></span><span>' + esc(T[v]) + "</span></div>"; }).join("");
+    if (q.type === "short" || q.type === "number" || q.type === "date") return '<div class="pv-input"' + d + ">" + esc(q.type === "date" ? "yyyy-mm-dd" : T.your_answer) + "</div>";
+    if (q.type === "paragraph") return '<div class="pv-input tall"' + d + ">" + esc(T.your_answer) + "</div>";
+    if (q.type === "file") return '<div class="pv-input">' + icon("clip", 14) + " " + esc(T.choose_file) + "</div>";
+    if (q.type === "draw") return '<div class="pv-draw' + (o && o.lines === false ? "" : " lined") + '"></div>';
+    if (q.type === "fill") return fillPreviewHtml(q);
+    if (q.type === "scale") return scaleHtml(o || {}, 0);
+    if (q.type === "order") {
+      var first = (q.correct || [])[0] || "";
+      var chunks = (first.indexOf("/") !== -1 ? first.split("/") : first.split(/\s+/)).map(function (c) { return c.trim(); }).filter(Boolean);
+      chunks.sort();
+      return '<div class="pv-line"></div><div class="pv-bank"' + d + ">" + chunks.map(function (c) { return "<span>" + esc(c) + "</span>"; }).join("") + "</div>";
+    }
+    if (q.type === "match") {
+      var pairs = ((o && o.pairs) || []).map(function (p, i) { return { p: p, i: i }; }).filter(function (x) {
+        return (String(x.p[0]).trim() || imgAt(q, "left_images", x.i)) && (String(x.p[1]).trim() || imgAt(q, "right_images", x.i));
+      }).map(function (x) { var p = x.p.slice(); p.i = x.i; return p; });
+      var left = pairs.map(function (p, k) {
+        var i = p.i;
+        var img = imgAt(q, "left_images", i);
+        return '<div class="pv-mrow"' + d + "><span>" + (k + 1) + ". " + rich(shown(p[0])) + "</span>" + (img ? '<img src="' + esc(media(img)) + '" alt="">' : "") + '<span class="pv-slot"></span></div>';
+      }).join("");
+      var right = pairs.map(function (p) {
+        var img = imgAt(q, "right_images", p.i);
+        return "<span>" + (img ? '<img src="' + esc(media(img)) + '" alt="">' : "") + rich(shown(p[1])) + "</span>";
+      }).concat((o && o.distractors || []).map(function (x) { return "<span>" + esc(x) + "</span>"; })).join("");
+      return left + '<div class="pv-bank">' + right + "</div>";
+    }
+    return "";
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-device]"), function (b) {
+    b.addEventListener("click", function () {
+      device = b.getAttribute("data-device");
+      Array.prototype.forEach.call(document.querySelectorAll("[data-device]"), function (x) { x.classList.toggle("on", x === b); });
+      renderPreview();
+    });
+  });
+  var pvToggle = $("btn-preview-panel");
+  if (pvToggle) pvToggle.addEventListener("click", function () { builder.classList.toggle("show-preview"); renderPreview(); });
+
+  /* ================= question bank ================= */
+  function payloadFor(q) {
+    var single = questions;
+    questions = [q];
+    var out = buildPayload().questions[0];
+    questions = single;
+    out.id = null;
+    return out;
+  }
+  function saveToBank(q) {
+    api(data.bankUrl, { json: { question: payloadFor(q), subject: settings.subject || "", grade: settings.grade || "" } })
+      .then(function (res) { toast(res.ok ? res.message : (res.error || T.save_failed)); })
+      .catch(function () { toast(T.save_failed); });
+  }
+
+  var bankModal = $("bank-modal");
+  var bankItems = [], bankPicked = {}, bankTimer = null;
+  function bankCount() { $("bank-count").textContent = Object.keys(bankPicked).length; }
+  function loadBank() {
+    var params = ["q=" + encodeURIComponent($("bank-q").value.trim()), "type=" + encodeURIComponent($("bank-type").value),
+      "subject=" + encodeURIComponent($("bank-subject").value), "grade=" + encodeURIComponent($("bank-grade").value)];
+    var box = $("bank-list");
+    box.textContent = T.loading;
+    fetch(data.bankUrl + "?" + params.join("&"), { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (res) {
+      bankItems = res.items || [];
+      [["bank-subject", res.subjects], ["bank-grade", res.grades]].forEach(function (pair) {
+        var sel = $(pair[0]);
+        if (sel.options.length <= 1) (pair[1] || []).forEach(function (v) { sel.appendChild(h("option", { value: v, text: v })); });
+      });
+      box.textContent = "";
+      if (!bankItems.length) { box.appendChild(h("div", { class: "empty", text: T.bank_none_found })); return; }
+      bankItems.forEach(function (item) {
+        var cb = h("input", { type: "checkbox", onchange: function () {
+          if (cb.checked) bankPicked[item.bank_id] = item; else delete bankPicked[item.bank_id];
+          bankCount();
+        } });
+        cb.checked = !!bankPicked[item.bank_id];
+        var meta = h("div", { class: "bank-meta" }, [h("span", { class: "badge blue", text: item.type_label })]);
+        if (item.points) meta.appendChild(h("span", { class: "badge gray", text: item.points + " " + T.points }));
+        if (item.subject) meta.appendChild(h("span", { class: "badge green", text: item.subject }));
+        if (item.grade) meta.appendChild(h("span", { class: "badge green", text: item.grade }));
+        var body = h("div", { class: "bank-body" }, [meta, h("div", { class: "bank-text", dir: "auto", text: item.text })]);
+        if (item.answer) body.appendChild(h("div", { class: "bank-answer small", dir: "auto", text: "✓ " + item.answer }));
+        var row = h("label", { class: "card bank-item" }, [cb, body]);
+        if (item.image) row.appendChild(h("img", { class: "bank-img", src: media(item.image), alt: "", loading: "lazy" }));
+        box.appendChild(row);
+      });
+    }).catch(function () { box.textContent = T.save_failed; });
+  }
+  function openBank() { bankPicked = {}; bankCount(); bankModal.hidden = false; loadBank(); $("bank-q").focus(); }
+  $("btn-bank").addEventListener("click", openBank);
+  $("bank-cancel").addEventListener("click", function () { bankModal.hidden = true; });
+  bankModal.addEventListener("click", function (e) { if (e.target === bankModal) bankModal.hidden = true; });
+  $("bank-q").addEventListener("input", function () { clearTimeout(bankTimer); bankTimer = setTimeout(loadBank, 300); });
+  ["bank-type", "bank-subject", "bank-grade"].forEach(function (id) { $(id).addEventListener("change", loadBank); });
+  $("bank-add").addEventListener("click", function () {
+    var ids = Object.keys(bankPicked).map(Number);
+    if (!ids.length) { bankModal.hidden = true; return; }
+    var first = null;
+    ids.forEach(function (id) {
+      var it = bankPicked[id];
+      var q = { id: null, type: it.type, text: it.text, description: it.description || "", image: it.image || "", audio: it.audio || "",
+        points: it.points, required: it.type !== "section", options: JSON.parse(JSON.stringify(it.options)),
+        correct: JSON.parse(JSON.stringify(it.correct)), explanation: it.explanation || "", partial: !!it.partial,
+        manual_grade: !!it.manual_grade, extra: JSON.parse(JSON.stringify(it.extra || {})) };
+      questions.push(q);
+      if (!first) first = q;
+    });
+    api(data.bankUsedUrl, { json: { ids: ids } });
+    bankModal.hidden = true;
+    pendingFocus = { q: first, scroll: true };
+    touch(); render();
+    toast(fmt(T.bank_added, { n: ids.length }));
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !bankModal.hidden) bankModal.hidden = true; });
+
+  /* ================= AI: questions from a reading text ================= */
+  var aiModal = $("ai-modal");
+  var aiCounts = { mcq: 3, truefalse: 2 };
+  var aiLevel = "medium", aiResults = [];
+  function aiOpen() {
+    aiModal.hidden = false;
+    $("ai-off").hidden = !!data.aiEnabled;
+    $("ai-on").hidden = !data.aiEnabled;
+    if (!data.aiEnabled) { $("ai-off-text").textContent = data.isAdmin ? T.ai_disabled_admin : T.ai_disabled; return; }
+    var passage = $("ai-passage");
+    if (!passage.value.trim()) {
+      for (var i = Math.min(activeIndex, questions.length - 1); i >= 0; i -= 1) {
+        if (questions[i] && questions[i].type === "section" && questions[i].description) { passage.value = questions[i].description; break; }
+      }
+    }
+    drawCounts();
+    passage.focus();
+  }
+  function drawCounts() {
+    var box = $("ai-types");
+    box.textContent = "";
+    Object.keys(aiCounts).forEach(function (type) {
+      box.appendChild(h("span", { class: "count-chip" }, [
+        h("button", { type: "button", html: icon("minus", 11), onclick: function () { aiCounts[type] -= 1; if (aiCounts[type] <= 0) delete aiCounts[type]; drawCounts(); } }),
+        h("span", { text: T["type_" + type] + " × " + aiCounts[type] }),
+        h("button", { type: "button", html: icon("plus", 11), onclick: function () { aiCounts[type] = Math.min(10, aiCounts[type] + 1); drawCounts(); } })]));
+    });
+    var add = h("select", { class: "count-add", onchange: function () { if (add.value) { aiCounts[add.value] = (aiCounts[add.value] || 0) + 1; drawCounts(); } } }, [h("option", { value: "", text: "+ " + T.ai_add_type })]);
+    ["mcq", "truefalse", "short", "fill", "checkbox", "paragraph"].forEach(function (t) { if (!aiCounts[t]) add.appendChild(h("option", { value: t, text: T["type_" + t] })); });
+    box.appendChild(add);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll("[data-level]"), function (b) {
+    b.addEventListener("click", function () {
+      aiLevel = b.getAttribute("data-level");
+      Array.prototype.forEach.call(document.querySelectorAll("[data-level]"), function (x) { x.classList.toggle("on", x === b); });
+    });
+  });
+  function aiGenerate() {
+    var passage = $("ai-passage").value.trim();
+    var res = $("ai-results");
+    if (!passage) { toast(T.ai_need_text); return; }
+    res.innerHTML = '<div class="ai-wait">' + icon("spin", 18) + " " + esc(T.ai_thinking) + "</div>";
+    $("ai-generate").disabled = true;
+    api(data.aiUrl, { json: { mode: "questions", passage: passage, counts: aiCounts, level: aiLevel } }).then(function (r) {
+      $("ai-generate").disabled = false;
+      res.textContent = "";
+      if (!r.ok) { res.textContent = r.error || T.ai_failed; return; }
+      aiResults = (r.questions || []).map(function (q) { q._pick = true; return q; });
+      if (!aiResults.length) { res.textContent = T.ai_failed; return; }
+      drawResults();
+    }).catch(function () { $("ai-generate").disabled = false; res.textContent = T.ai_failed; });
+  }
+  function drawResults() {
+    var res = $("ai-results");
+    res.textContent = "";
+    res.appendChild(h("b", { class: "small", text: T.ai_review }));
+    aiResults.forEach(function (q) {
+      var cb = h("input", { type: "checkbox", onchange: function () { q._pick = cb.checked; countAi(); } });
+      cb.checked = q._pick;
+      var meta = T["type_" + q.type];
+      if (q.type === "mcq" && typeof q.correct === "number") meta += " · " + q.options.map(function (o, i) { return i === q.correct ? o + " ✓" : o; }).join(" · ");
+      else if (q.type === "truefalse") meta += " · " + T[q.correct] + " ✓";
+      else if (q.type === "fill") meta += " · " + q.options.template;
+      res.appendChild(h("label", { class: "ai-item" }, [cb, h("span", {}, [h("b", { dir: "auto", text: q.text }), h("small", { class: "muted", dir: "auto", text: meta })])]));
+    });
+    countAi();
+  }
+  function countAi() {
+    var n = aiResults.filter(function (q) { return q._pick; }).length;
+    $("ai-add").textContent = fmt(T.ai_add_n, { n: n });
+    $("ai-add").disabled = !n;
+    $("ai-again").hidden = false;
+  }
+  if (aiModal) {
+    $("btn-ai").addEventListener("click", aiOpen);
+    $("ai-close").addEventListener("click", function () { aiModal.hidden = true; });
+    aiModal.addEventListener("click", function (e) { if (e.target === aiModal) aiModal.hidden = true; });
+    $("ai-generate").addEventListener("click", aiGenerate);
+    $("ai-again").addEventListener("click", aiGenerate);
+    $("ai-add").addEventListener("click", function () {
+      var at = Math.min(questions.length, activeIndex + 1);
+      var first = null;
+      aiResults.filter(function (q) { return q._pick; }).forEach(function (r) {
+        var q = newQuestion(r.type);
+        q.text = r.text;
+        if (r.options) q.options = r.options;
+        q.correct = r.correct;
+        q.points = r.points || q.points;
+        if (GRADED.indexOf(q.type) !== -1) q.manual_grade = q.type === "fill" ? false : (r.correct === null || r.correct === undefined);
+        if (q.type === "fill") q.options.bank = true;
+        questions.splice(at, 0, q);
+        at += 1;
+        if (!first) first = q;
+      });
+      aiModal.hidden = true;
+      aiResults = [];
+      $("ai-results").textContent = "";
+      pendingFocus = { q: first, scroll: true };
+      touch(); render();
+    });
+  }
+
+  /* ================= drag & drop ================= */
+  function startDrag(event, fromIndex, card) {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    var target = null;
+    card.classList.add("dragging");
+    document.body.classList.add("is-dragging");
+    function moveTo(e) {
+      var el = document.elementFromPoint(e.clientX, e.clientY);
+      var over = el ? el.closest(".qcard") : null;
+      if (target && target !== over) target.classList.remove("drop-target");
+      target = over && over !== card ? over : null;
+      if (target) target.classList.add("drop-target");
+      if (e.clientY < 70) window.scrollBy(0, -14);
+      else if (e.clientY > window.innerHeight - 70) window.scrollBy(0, 14);
+    }
+    function up() {
+      document.removeEventListener("pointermove", moveTo);
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", up);
+      card.classList.remove("dragging");
+      document.body.classList.remove("is-dragging");
+      if (target) {
+        target.classList.remove("drop-target");
+        var to = parseInt(target.getAttribute("data-index"), 10);
+        if (!isNaN(to) && to !== fromIndex) {
+          var item = questions.splice(fromIndex, 1)[0];
+          questions.splice(to, 0, item);
+          activeIndex = to;
+          touch(); render();
+        }
+      }
+    }
+    document.addEventListener("pointermove", moveTo);
+    document.addEventListener("pointerup", up);
+    document.addEventListener("pointercancel", up);
+  }
+
+  function move(index, delta) {
+    var to = index + delta;
+    if (to < 0 || to >= questions.length) return;
+    var item = questions.splice(index, 1)[0];
+    questions.splice(to, 0, item);
+    activeIndex = to;
+    touch(); render();
+    var cards = list.querySelectorAll(".qcard");
+    if (cards[to]) cards[to].scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function duplicate(index) {
+    var copy = JSON.parse(JSON.stringify(questions[index], function (k, v) { return k.charAt(0) === "_" ? undefined : v; }));
+    copy.id = null;
+    questions.splice(index + 1, 0, copy);
+    pendingFocus = { q: copy, scroll: true };
+    touch(); render();
+  }
+  function remove(index) {
+    if (!window.confirm(T.confirm_delete_question)) return;
+    questions.splice(index, 1);
+    activeIndex = Math.max(0, Math.min(activeIndex, questions.length - 1));
+    touch(); render();
+  }
+
+  $("add-bar").addEventListener("click", function (event) {
+    var button = event.target.closest("[data-add]");
+    if (!button) return;
+    insertAt(button.getAttribute("data-add"), questions.length);
+  });
+
+  /* ================= settings ================= */
+  var BOOLS = ["shuffle_questions", "shuffle_options", "show_answers", "require_login", "block_copy", "detect_tabs", "require_fullscreen"];
+  var NUMS = ["time_limit_min", "max_attempts", "pass_percent", "max_violations"];
+  var TEXTS = ["description", "show_results", "subject", "grade"];
+  var DATES = ["opens_at", "closes_at"];
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+  function toLocalInput(ts) {
+    if (!ts) return "";
+    var d = new Date(ts * 1000);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function fromLocalInput(value) {
+    if (!value) return null;
+    var ms = new Date(value).getTime();
+    return isNaN(ms) ? null : Math.floor(ms / 1000);
+  }
+  var titleInput = $("f-title");
+  titleInput.value = settings.title;
+  titleInput.addEventListener("input", function () { settings.title = titleInput.value; touch(); });
+  BOOLS.forEach(function (key) {
+    var el = $("s-" + key);
+    el.checked = !!settings[key];
+    el.addEventListener("change", function () { settings[key] = el.checked; touch(); });
+  });
+  NUMS.forEach(function (key) {
+    var el = $("s-" + key);
+    el.value = settings[key] === null || settings[key] === undefined ? "" : settings[key];
+    el.addEventListener("input", function () { settings[key] = el.value === "" ? 0 : parseInt(el.value, 10) || 0; touch(); });
+  });
+  TEXTS.forEach(function (key) {
+    var el = $("s-" + key);
+    el.value = settings[key] || (key === "show_results" ? "after_grading" : "");
+    el.addEventListener("input", function () { settings[key] = el.value; touch(); });
+  });
+  DATES.forEach(function (key) {
+    var el = $("s-" + key);
+    el.value = toLocalInput(settings[key]);
+    el.addEventListener("input", function () { settings[key] = fromLocalInput(el.value); touch(); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".class-check"), function (el) {
+    el.addEventListener("change", function () {
+      var id = parseInt(el.value, 10);
+      var ids = (settings.class_ids || []).filter(function (x) { return x !== id; });
+      if (el.checked) ids.push(id);
+      settings.class_ids = ids;
+      touch();
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".student-check"), function (el) {
+    el.addEventListener("change", function () {
+      var id = parseInt(el.value, 10);
+      var ids = (settings.student_ids || []).filter(function (x) { return x !== id; });
+      if (el.checked) ids.push(id);
+      settings.student_ids = ids;
+      var badge = $("student-count");
+      if (badge) badge.textContent = ids.length;
+      touch();
+    });
+  });
+  $("btn-collapse").addEventListener("click", function () { questions.forEach(function (q) { q._collapsed = true; }); render(); });
+  $("btn-expand").addEventListener("click", function () { questions.forEach(function (q) { q._collapsed = false; }); render(); });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-tab]"), function (tab) {
+    tab.addEventListener("click", function () {
+      var name = tab.getAttribute("data-tab");
+      Array.prototype.forEach.call(document.querySelectorAll("[data-tab]"), function (t) {
+        var on = t === tab;
+        t.classList.toggle("on", on);
+        t.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      ["questions", "settings", "share"].forEach(function (id) { $("tab-" + id).hidden = id !== name; });
+      if (history.replaceState) history.replaceState(null, "", "#" + name);
+    });
+  });
+  $("btn-copy-link").addEventListener("click", function () {
+    var input = $("share-url");
+    var done = function () { toast(T.copy_done); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(input.value).then(done, function () { input.select(); document.execCommand("copy"); done(); });
+    else { input.select(); document.execCommand("copy"); done(); }
+  });
+
+  /* ================= saving (with offline retry) ================= */
+  function buildPayload() {
+    return {
+      settings: Object.assign({}, settings, { title: settings.title }),
+      questions: questions.map(function (q) {
+        var extra = {};
+        if (q.extra.dir) extra.dir = q.extra.dir;
+        if (q.extra.attachment) extra.attachment = q.extra.attachment;
+        var out = { id: q.id, type: q.type, text: q.text, description: q.description, image: q.image || "", audio: q.audio || "", points: q.points,
+          required: !!q.required, explanation: q.explanation, partial: !!q.partial, manual_grade: !!q.manual_grade,
+          options: q.options, correct: q.correct, extra: extra };
+        if (q.type === "match") {
+          var pairs = [], li = [], ri = [], used = {};
+          (q.options.pairs || []).forEach(function (p, i) {
+            var L = imgAt(q, "left_images", i), R = imgAt(q, "right_images", i);
+            var a = String(p[0]).trim() ? p[0] : (L ? null : ""), b = String(p[1]).trim() ? p[1] : (R ? null : "");
+            if (a === "" || b === "") return;
+            if (a === null) a = invisible(used);
+            if (b === null) b = invisible(used);
+            pairs.push([a, b]); li.push(L); ri.push(R);
+          });
+          out.options = { pairs: pairs, distractors: q.options.distractors || [] };
+          if (li.some(Boolean)) extra.left_images = li;
+          if (ri.some(Boolean)) extra.right_images = ri;
+        }
+        if (CHOICE.indexOf(q.type) !== -1) {
+          var keep = [], imgs = [], remap = {}, seen = {};
+          q.options.forEach(function (text, i) {
+            var img = q.type !== "dropdown" ? imgAt(q, "option_images", i) : "";
+            if (String(text).trim() || img) {
+              remap[i] = keep.length;
+              keep.push(String(text).trim() ? text : invisible(seen));
+              imgs.push(img);
+            }
+          });
+          out.options = keep;
+          if (imgs.some(Boolean)) extra.option_images = imgs;
+          if (Array.isArray(q.correct)) out.correct = q.correct.filter(function (i) { return remap[i] !== undefined; }).map(function (i) { return remap[i]; });
+          else if (typeof q.correct === "number") out.correct = remap[q.correct] !== undefined ? remap[q.correct] : null;
+        }
+        if (q.type === "fill") {
+          out.options = Object.assign({}, q.options);
+          if (q.manual_grade) delete out.options.blank_points;
+        }
+        return out;
+      })
+    };
+  }
+  function invisible(used) {
+    var n = 1;
+    while (used[n]) n += 1;
+    used[n] = true;
+    return new Array(n + 1).join(INV);
+  }
+
+  var DRAFT_KEY = "exam-draft-" + data.id;
+  function keepDraft() {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), payload: buildPayload() })); } catch (e) { /* storage unavailable */ }
+  }
+  function dropDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignore */ } }
+
+  function save(force) {
+    clearTimeout(saveTimer);
+    if (saving) {
+      return new Promise(function (resolve) {
+        var wait = setInterval(function () { if (!saving) { clearInterval(wait); resolve(save(force)); } }, 120);
+      });
+    }
+    if (revision === savedRevision && !force && questions.every(function (q) { return q.id; })) return Promise.resolve(true);
+    saving = true;
+    var startRevision = revision;
+    setSaveState("saving");
+    return api(builder.getAttribute("data-save-url"), { json: buildPayload() }).then(function (res) {
+      saving = false;
+      if (!res.ok) {
+        if (!res.status || res.status >= 500) return offline();
+        setSaveState("error", res.error);
+        if (res.error) toast(res.error);
+        if (typeof res.index === "number") { tabTo("questions"); focusQuestion(res.index); }
+        return false;
+      }
+      retryDelay = 3000;
+      clearTimeout(retryTimer);
+      (res.ids || []).forEach(function (id, i) { if (questions[i]) questions[i].id = id; });
+      savedRevision = startRevision;
+      dropDraft();
+      if (revision === startRevision) setSaveState("saved");
+      else saveTimer = setTimeout(function () { save(); }, 1200);
+      return true;
+    }).catch(function () { saving = false; return offline(); });
+  }
+  function offline() {
+    keepDraft();
+    setSaveState("offline");
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(function () { save(true); }, retryDelay);
+    retryDelay = Math.min(30000, retryDelay * 2);
+    return false;
+  }
+  window.addEventListener("online", function () { if (revision !== savedRevision) { retryDelay = 3000; save(true); } });
+
+  function focusQuestion(index) {
+    var card = list.querySelectorAll(".qcard")[index];
+    if (!card) return;
+    if (questions[index] && questions[index]._collapsed) { questions[index]._collapsed = false; render(); card = list.querySelectorAll(".qcard")[index]; }
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    var field = card.querySelector("[data-q-text]");
+    if (field) field.focus({ preventScroll: true });
+  }
+  function tabTo(name) { var tab = document.querySelector('[data-tab="' + name + '"]'); if (tab) tab.click(); }
+
+  $("btn-save").addEventListener("click", function () { save(true); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-save-first], #btn-preview"), function (button) {
+    button.addEventListener("click", function (event) {
+      var form = button.closest("form");
+      if (!form) return;
+      event.preventDefault();
+      save(true).then(function (ok) { if (ok) form.submit(); });
+    });
+  });
+  document.addEventListener("keydown", function (event) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); save(true); }
+  });
+  window.addEventListener("beforeunload", function (event) {
+    if (revision !== savedRevision) { keepDraft(); event.preventDefault(); event.returnValue = ""; }
+  });
+
+  /* ================= init ================= */
+  (function restoreDraft() {
+    var raw = null;
+    try { raw = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (e) { raw = null; }
+    if (!raw || !raw.payload || !raw.at || raw.at / 1000 <= (data.updatedAt || 0)) { dropDraft(); return; }
+    if (!window.confirm(T.draft_restore)) { dropDraft(); return; }
+    var p = raw.payload;
+    Object.assign(settings, p.settings || {});
+    questions = (p.questions || []).map(function (q) { q.extra = q.extra || {}; return q; });
+    revision = 1;
+    setTimeout(function () { save(true); }, 300);
+  })();
+  if (questions.length > 12) questions.forEach(function (q, i) { q._collapsed = i > 0; });
+  render();
+  if (location.hash === "#settings" || location.hash === "#share") tabTo(location.hash.slice(1));
+  setSaveState(revision ? "saving" : "saved");
+})();
