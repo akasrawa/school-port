@@ -73,6 +73,7 @@
 
   var ICONS = {
     up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
+    fold: '<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
@@ -112,6 +113,7 @@
   /* ================= state ================= */
   function touch(q) {
     revision += 1;
+    if (q && q._error) { delete q._error; if (q._errEl) q._errEl.hidden = true; if (q._el) q._el.classList.remove("has-error"); }
     if (q) refreshCardState(q);
     setSaveState("saving");
     clearTimeout(saveTimer);
@@ -224,7 +226,7 @@
 
   /* ================= card ================= */
   function cardClass(q) {
-    var c = "card qcard t-" + q.type + (q._collapsed ? " collapsed" : "");
+    var c = "card qcard t-" + q.type + (q._collapsed ? " collapsed" : "") + (q._error ? " has-error" : "");
     if (q.type === "section") return c + " section";
     if (GRADED.indexOf(q.type) !== -1 && q.manual_grade) c += " manual no-key";
     else if (MANUAL.indexOf(q.type) !== -1) c += " manual";
@@ -302,7 +304,7 @@
     var head = h("div", { class: "qcard-head" }, [
       grip, numEl, typeSelect, modeBadge(q), q._pts, h("span", { class: "spacer" }), q._status,
       h("div", { class: "qcard-tools" }, [
-        iconButton("up", T.collapse, function () { q._collapsed = true; render(); }, { extraClass: "collapse-btn" }),
+        iconButton("fold", T.collapse, function () { q._collapsed = true; render(); }, { extraClass: "collapse-btn" }),
         iconButton("up", T.move_up, function () { move(index, -1); }, { disabled: index === 0 }),
         iconButton("down", T.move_down, function () { move(index, 1); }, { disabled: index === questions.length - 1 }),
         iconButton("copy", T.duplicate, function () { duplicate(index); }),
@@ -313,6 +315,9 @@
     ]);
 
     var fields = h("div", { class: "q-fields qcard-body" });
+    q._errEl = h("p", { class: "q-error-line", hidden: !q._error, html: icon("alert", 14) + "<span></span>" });
+    q._errEl.lastChild.textContent = q._error || "";
+    fields.appendChild(q._errEl);
     fields.appendChild(textEditor(q));
     if (q.type === "section") {
       var body = h("textarea", { rows: "6", maxlength: "6000", dir: q.extra.dir || "auto", placeholder: T.section_body, "aria-label": T.section_body,
@@ -1102,10 +1107,7 @@
       value: (o.distractors || []).join("، "),
       oninput: function () { o.distractors = words.value.split(/[,،]/).map(function (s) { return s.trim(); }).filter(Boolean); livePrev(); touch(q); } });
 
-    var prev = h("div", { class: "live-box fill-live" });
-    function livePrev() {
-      prev.innerHTML = '<small class="muted">' + esc(T.student_view) + "</small>" + fillPreviewHtml(q);
-    }
+    function livePrev() { schedulePreview(); }
 
     build();
     rows();
@@ -1116,7 +1118,6 @@
       parts.push(h("p", { class: "q-hint warn", text: T.manual_no_key }));
       parts.push(h("div", { class: "note-card" }, [h("b", { text: T.partial_title }), h("p", { class: "muted small", text: fmt(T.partial_manual_note, { n: num(q.points) }) })]));
     }
-    parts.push(prev);
     return h("div", { class: "q-fields" }, parts);
   }
 
@@ -1205,7 +1206,7 @@
     if (!questions.length) list.appendChild(h("div", { class: "q-empty", text: T.no_questions }));
     questions.forEach(function (q, i) {
       list.appendChild(renderCard(q, i));
-      if (i < questions.length - 1) {
+      if (q.type !== "section" || i < questions.length - 1) {  /* "add a question here" under every question */
         var gap = h("div", { class: "q-gap" }, [h("button", { type: "button", class: "gap-add", "data-picker": "1", html: icon("plus", 13) + "<span></span>",
           onclick: function (e) { openTypePicker(e.currentTarget, i + 1); } })]);
         gap.querySelector("span").textContent = T.add_question_here;
@@ -1250,6 +1251,11 @@
   /* ================= live preview (as the student sees it) ================= */
   function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 160); }
 
+  function sectionOf(index) {
+    for (var i = index - 1; i >= 0; i -= 1) if (questions[i].type === "section") return questions[i];
+    return null;
+  }
+
   function renderPreview() {
     if (!preview) return;
     var q = questions[activeIndex] || questions[0];
@@ -1264,21 +1270,203 @@
       out += '<div class="pv-top"><span>' + esc(fmt(T.q_of_n, { n: pos, total: scored.length })) + "</span>" +
         (UNSCORED.indexOf(q.type) === -1 ? "<span>" + esc(fmt(T.n_points, { n: num(q.points) })) + "</span>" : "") + "</div>";
       out += '<div class="pv-bar"><i style="width:' + Math.round(100 * pos / Math.max(1, scored.length)) + '%"></i></div>';
+      var sec = sectionOf(questions.indexOf(q));
+      if (sec && (String(sec.text || "").trim() || sec.description || sec.image)) {
+        var sd = sec.extra.dir || "auto";
+        out += '<div class="pv-sec">' + (String(sec.text || "").trim() ? '<div class="pv-sec-title" dir="' + esc(sd) + '">' + rich(sec.text) + "</div>" : "") +
+          (sec.image ? '<img class="pv-img" src="' + esc(media(sec.image)) + '" alt="">' : "") +
+          (sec.description ? '<div class="pv-passage small" dir="' + esc(sd) + '">' + rich(sec.description) + "</div>" : "") + "</div>";
+      }
     }
-    out += '<div class="pv-q" dir="' + esc(dir) + '">' + (rich(q.text) || '<span class="muted">' + esc(T.untitled_question) + "</span>") + "</div>";
+    out += '<div class="pv-q" dir="' + esc(dir) + '">' + (rich(q.text) || '<span class="muted">' + esc(q.type === "section" ? T.type_section : T.untitled_question) + "</span>") + "</div>";
     if (q.type === "section") {
       if (q.image) out += '<img class="pv-img" src="' + esc(media(q.image)) + '" alt="">';
       if (q.description) out += '<div class="pv-passage" dir="' + esc(dir) + '">' + rich(q.description) + "</div>";
     } else {
       if (q.description) out += '<p class="pv-hint" dir="' + esc(dir) + '">' + rich(q.description) + "</p>";
       if (q.image) out += '<img class="pv-img" src="' + esc(media(q.image)) + '" alt="">';
-      if (q.audio) out += '<div class="pv-audio">' + icon("music", 14) + " " + esc(T.listen) + "</div>";
+      if (q.audio) out += '<audio class="pv-audio-el" controls preload="none" src="' + esc(media(q.audio)) + '"></audio>';
       if (q.extra.attachment) out += '<div class="pv-file">' + icon("clip", 14) + " " + esc(q.extra.attachment.label || "") + "</div>";
-      out += previewBody(q, dir);
-      out += '<div class="pv-next">' + esc(T.next) + "</div>";
+      var tryable = TRY_TYPES.indexOf(q.type) !== -1;
+      out += tryable ? tryBody(q, dir) : previewBody(q, dir);
+      if (tryable) {
+        out += '<div class="pv-try"><button type="button" class="pv-check" data-k="check">' + icon("check", 15) + " " + esc(T.try_check) + "</button>" +
+          '<button type="button" class="link" data-k="clear">' + esc(T.try_clear) + "</button></div>";
+        out += '<div class="pv-result" id="pv-result">' + (q._tryResult || '<span class="muted small">' + esc(T.try_hint) + "</span>") + "</div>";
+      } else if (MANUAL.indexOf(q.type) !== -1) {
+        out += '<div class="pv-result"><span class="muted small">' + esc(T.try_manual) + "</span></div>";
+      }
     }
     preview.innerHTML = out;
+    preview.setAttribute("data-index", String(questions.indexOf(q)));
     if (window.MathView) window.MathView.render(preview);
+  }
+
+  /* ---------- trying the question in the preview (graded by the server with the real rules) ---------- */
+  var TRY_TYPES = ["mcq", "checkbox", "dropdown", "truefalse", "short", "number", "fill", "order", "match"];
+  function payloadOf(q) {
+    var single = questions;
+    questions = [q];
+    var out = buildPayload().questions[0];
+    questions = single;
+    return out;
+  }
+  function tryBody(q, dir) {
+    var p = payloadOf(q);
+    var v = q._try;
+    var d = ' dir="' + esc(dir) + '"';
+    var o = p.options;
+    var imgs = (p.extra && p.extra.option_images) || [];
+    if (q.type === "mcq" || q.type === "checkbox") {
+      return (o || []).map(function (opt, i) {
+        var on = q.type === "checkbox" ? (Array.isArray(v) && v.indexOf(i) !== -1) : v === i;
+        return '<label class="pv-opt pick"' + d + '><input type="' + (q.type === "checkbox" ? "checkbox" : "radio") + '" name="pv-choice" data-k="choice" value="' + i + '"' + (on ? " checked" : "") + ">" +
+          "<span>" + rich(shown(opt)) + "</span>" + (imgs[i] ? '<img src="' + esc(media(imgs[i])) + '" alt="">' : "") + "</label>";
+      }).join("");
+    }
+    if (q.type === "dropdown") {
+      return '<select class="pv-sel" data-k="select"' + d + '><option value="">' + esc(T.choose) + "</option>" + (o || []).map(function (opt, i) {
+        return '<option value="' + i + '"' + (v === i ? " selected" : "") + ">" + esc(shown(opt)) + "</option>";
+      }).join("") + "</select>";
+    }
+    if (q.type === "truefalse") {
+      return ["true", "false"].map(function (val) {
+        return '<label class="pv-opt pick"><input type="radio" name="pv-tf" data-k="tf" value="' + val + '"' + (v === val ? " checked" : "") + "><span>" + esc(T[val]) + "</span></label>";
+      }).join("");
+    }
+    if (q.type === "short" || q.type === "number") {
+      return '<input class="pv-in" type="text" data-k="text"' + (q.type === "number" ? ' dir="ltr" inputmode="decimal"' : d) + ' value="' + esc(v || "") + '" placeholder="' + esc(T.your_answer) + '">';
+    }
+    if (q.type === "fill") {
+      var text = (o && o.template) || "", html = "", last = 0, m, k = 0;
+      var vals = Array.isArray(v) ? v : [];
+      BLANK_RE.lastIndex = 0;
+      while ((m = BLANK_RE.exec(text))) {
+        html += rich(text.slice(last, m.index)) + '<input class="pv-blank-in" type="text" data-k="blank" data-i="' + k + '" value="' + esc(vals[k] || "") + '">';
+        last = m.index + m[0].length;
+        k += 1;
+      }
+      html += rich(text.slice(last));
+      var words = [];
+      if (o && o.bank) {
+        blanksOf(q).forEach(function (b) { var a = altsOf(b)[0]; if (a) words.push(a); });
+        (o.distractors || []).forEach(function (w) { if (w) words.push(w); });
+        words = words.filter(function (w, i) { return words.indexOf(w) === i; }).sort();
+      }
+      return '<div class="pv-fill"' + d + ">" + html + "</div>" + (words.length ? '<div class="pv-bank">' + words.map(function (w) {
+        return '<button type="button" data-k="word" data-w="' + esc(w) + '">' + esc(w) + "</button>";
+      }).join("") + "</div>" : "");
+    }
+    if (q.type === "order") {
+      var first = (q.correct || [])[0] || "";
+      var chunks = (first.indexOf("/") !== -1 ? first.split("/") : first.split(/\s+/)).map(function (c) { return c.trim(); }).filter(Boolean);
+      var order = chunks.map(function (c, i) { return i; }).sort(function (a, b) { return chunks[a] < chunks[b] ? -1 : chunks[a] > chunks[b] ? 1 : a - b; });
+      var picked = Array.isArray(v) ? v : [];
+      return '<div class="pv-line built"' + d + ">" + picked.map(function (i) { return "<span>" + esc(chunks[i]) + "</span>"; }).join(" ") + "</div>" +
+        '<div class="pv-bank"' + d + ">" + order.map(function (i) {
+          return '<button type="button" data-k="chunk" data-i="' + i + '"' + (picked.indexOf(i) !== -1 ? " disabled" : "") + ">" + esc(chunks[i]) + "</button>";
+        }).join("") + "</div>";
+    }
+    if (q.type === "match") {
+      var pairs = (o && o.pairs) || [];
+      var L = (p.extra && p.extra.left_images) || [], R = (p.extra && p.extra.right_images) || [];
+      var choices = [];
+      pairs.forEach(function (pr) { if (choices.indexOf(pr[1]) === -1) choices.push(pr[1]); });
+      (o.distractors || []).forEach(function (x) { if (x && choices.indexOf(x) === -1) choices.push(x); });
+      choices.sort();
+      var given = Array.isArray(v) ? v : [];
+      return pairs.map(function (pr, i) {
+        return '<div class="pv-mrow"' + d + "><span>" + (i + 1) + ". " + (L[i] ? '<img src="' + esc(media(L[i])) + '" alt="">' : "") + rich(shown(pr[0])) + "</span>" +
+          '<select class="pv-sel sm" data-k="match" data-i="' + i + '"><option value="">' + esc(T.choose) + "</option>" + choices.map(function (c, n) {
+            var label = shown(c).trim() || ("🖼 " + (n + 1));
+            return '<option value="' + esc(c) + '"' + (given[i] === c ? " selected" : "") + ">" + esc(label) + "</option>";
+          }).join("") + "</select></div>";
+      }).join("") + (R.some(Boolean) ? '<div class="pv-bank">' + pairs.map(function (pr, i) {
+        return R[i] ? "<span><img src=\"" + esc(media(R[i])) + "\" alt=\"\">" + esc(shown(pr[1]).trim() || ("🖼 " + (choices.indexOf(pr[1]) + 1))) + "</span>" : "";
+      }).join("") + "</div>" : "");
+    }
+    return "";
+  }
+
+  function tryValue(q) {
+    var v = q._try;
+    if (q.type === "order") {
+      var first = (q.correct || [])[0] || "";
+      var chunks = (first.indexOf("/") !== -1 ? first.split("/") : first.split(/\s+/)).map(function (c) { return c.trim(); }).filter(Boolean);
+      return (Array.isArray(v) ? v : []).map(function (i) { return chunks[i]; }).join(" ");
+    }
+    return v === undefined ? null : v;
+  }
+
+  function currentQ() {
+    var i = parseInt(preview.getAttribute("data-index"), 10);
+    return questions[i];
+  }
+  var lastBlank = 0;
+  if (preview) {
+    preview.addEventListener("focusin", function (e) { if (e.target.getAttribute("data-k") === "blank") lastBlank = parseInt(e.target.getAttribute("data-i"), 10); });
+    function onEdit(e) {
+      var el = e.target, k = el.getAttribute && el.getAttribute("data-k"), q = currentQ();
+      if (!q || !k) return;
+      if (k === "choice") {
+        if (q.type === "checkbox") {
+          q._try = Array.prototype.map.call(preview.querySelectorAll('[data-k="choice"]:checked'), function (x) { return parseInt(x.value, 10); });
+        } else q._try = parseInt(el.value, 10);
+      } else if (k === "select") q._try = el.value === "" ? undefined : parseInt(el.value, 10);
+      else if (k === "tf") q._try = el.value;
+      else if (k === "text") q._try = el.value;
+      else if (k === "blank") {
+        var vals = Array.prototype.map.call(preview.querySelectorAll('[data-k="blank"]'), function (x) { return x.value; });
+        q._try = vals;
+      } else if (k === "match") {
+        q._try = Array.prototype.map.call(preview.querySelectorAll('[data-k="match"]'), function (x) { return x.value; });
+      } else return;
+      clearResult(q);
+    }
+    preview.addEventListener("input", onEdit);
+    preview.addEventListener("change", onEdit);
+    preview.addEventListener("click", function (e) {
+      var el = e.target.closest("[data-k]"), q = currentQ();
+      if (!el || !q) return;
+      var k = el.getAttribute("data-k");
+      if (k === "word") {
+        var inputs = preview.querySelectorAll('[data-k="blank"]');
+        var target = inputs[lastBlank] && !inputs[lastBlank].value ? inputs[lastBlank] : Array.prototype.filter.call(inputs, function (x) { return !x.value; })[0] || inputs[lastBlank];
+        if (target) { target.value = el.getAttribute("data-w"); onEdit({ target: target }); }
+      } else if (k === "chunk") {
+        q._try = (Array.isArray(q._try) ? q._try : []).concat([parseInt(el.getAttribute("data-i"), 10)]);
+        clearResult(q); renderPreview();
+      } else if (k === "clear") {
+        delete q._try; clearResult(q); renderPreview();
+      } else if (k === "check") {
+        checkTry(q);
+      }
+    });
+  }
+  function clearResult(q) {
+    delete q._tryResult;
+    var box = $("pv-result");
+    if (box) box.innerHTML = '<span class="muted small">' + esc(T.try_hint) + "</span>";
+  }
+  function checkTry(q) {
+    var box = $("pv-result");
+    if (box) box.innerHTML = '<span class="muted small">' + icon("spin", 14) + " " + esc(T.try_checking) + "</span>";
+    api(data.checkUrl, { json: { question: payloadOf(q), value: tryValue(q) } }).then(function (r) {
+      var html;
+      if (!r.ok) html = '<div class="res warn">' + icon("alert", 15) + " " + esc(r.error || T.save_failed) + "</div>";
+      else if (r.manual) html = '<div class="res info">' + esc(T.try_manual) + "</div>";
+      else if (r.nokey) html = '<div class="res warn">' + icon("alert", 15) + " " + esc(T.try_nokey) + "</div>";
+      else if (r.empty) html = '<div class="res info">' + esc(T.try_empty) + "</div>";
+      else {
+        var full = r.points >= r.max - 1e-9, none = r.points <= 0;
+        var cls = full ? "ok" : none ? "bad" : "part";
+        var label = full ? T.try_right : none ? T.try_wrong : T.try_partial;
+        html = '<div class="res ' + cls + '"><b>' + (full ? "✓ " : none ? "✗ " : "~ ") + esc(label) + "</b> — " + esc(fmt(T.try_score, { n: num(r.points), m: num(r.max) })) + "</div>";
+        if (!full && r.correct) html += '<div class="res-key">' + esc(T.correct_answer) + ": <b>" + esc(shown(r.correct)) + "</b></div>";
+      }
+      q._tryResult = html;
+      if (box && currentQ() === q) box.innerHTML = html;
+    }).catch(function () { if (box) box.innerHTML = '<span class="muted small">' + esc(T.offline_retry) + "</span>"; });
   }
 
   function previewBody(q, dir) {
@@ -1738,8 +1926,8 @@
       if (!res.ok) {
         if (!res.status || res.status >= 500) return offline();
         setSaveState("error", res.error);
-        if (res.error) toast(res.error);
-        if (typeof res.index === "number") { tabTo("questions"); focusQuestion(res.index); }
+        if (force && res.error) toast(res.error);
+        if (typeof res.index === "number" && questions[res.index]) markError(questions[res.index], res.error);
         return false;
       }
       retryDelay = 3000;
@@ -1752,6 +1940,14 @@
       return true;
     }).catch(function () { saving = false; return offline(); });
   }
+  /* show the problem on the question itself, without moving the page */
+  function markError(q, message) {
+    questions.forEach(function (x) { if (x !== q) delete x._error; });
+    q._error = message || T.save_needs_fix;
+    if (q._errEl) { q._errEl.hidden = false; q._errEl.lastChild.textContent = q._error; }
+    if (q._el) q._el.classList.add("has-error");
+  }
+
   function offline() {
     keepDraft();
     setSaveState("offline");
@@ -1762,14 +1958,6 @@
   }
   window.addEventListener("online", function () { if (revision !== savedRevision) { retryDelay = 3000; save(true); } });
 
-  function focusQuestion(index) {
-    var card = list.querySelectorAll(".qcard")[index];
-    if (!card) return;
-    if (questions[index] && questions[index]._collapsed) { questions[index]._collapsed = false; render(); card = list.querySelectorAll(".qcard")[index]; }
-    card.scrollIntoView({ behavior: "smooth", block: "center" });
-    var field = card.querySelector("[data-q-text]");
-    if (field) field.focus({ preventScroll: true });
-  }
   function tabTo(name) { var tab = document.querySelector('[data-tab="' + name + '"]'); if (tab) tab.click(); }
 
   $("btn-save").addEventListener("click", function () { save(true); });
@@ -1787,6 +1975,17 @@
   window.addEventListener("beforeunload", function (event) {
     if (revision !== savedRevision) { keepDraft(); event.preventDefault(); event.returnValue = ""; }
   });
+
+  /* keep content clear of the sticky top bar */
+  function fitOffsets() {
+    var bar = document.querySelector(".builder-bar");
+    var head = document.querySelector(".site-header, header.topbar, body > header");
+    var top = (head ? head.offsetHeight : 66) + (bar ? bar.offsetHeight : 0) + 16;
+    document.documentElement.style.scrollPaddingTop = top + "px";
+    document.documentElement.style.setProperty("--builder-top", top + "px");
+  }
+  window.addEventListener("resize", fitOffsets);
+  setTimeout(fitOffsets, 50);
 
   /* ================= init ================= */
   (function restoreDraft() {

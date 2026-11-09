@@ -260,6 +260,17 @@ def edit_form(fid):
         "ai_distractors",
         "ai_failed",
         "ai_none_new",
+        "try_check",
+        "try_clear",
+        "try_hint",
+        "try_manual",
+        "try_checking",
+        "try_nokey",
+        "try_empty",
+        "try_right",
+        "try_wrong",
+        "try_partial",
+        "try_score",
         "ai_need_text",
         "ai_review",
         "ai_suggested",
@@ -439,6 +450,7 @@ def edit_form(fid):
         "bankUsedUrl": url_for("teacher.api_bank_used"),
         "defaultManual": flag("default_manual_grade"),
         "aiUrl": url_for("teacher.api_ai", fid=fid),
+        "checkUrl": url_for("teacher.api_check", fid=fid),
         "aiEnabled": __import__("server.ai", fromlist=["enabled"]).enabled(),
         "isAdmin": is_admin(),
         "updatedAt": form["updated_at"] or 0,
@@ -748,6 +760,28 @@ def api_ai(fid):
         return jsonify(ok=False, error=t("ai_failed")), 502
 
 
+@bp.post("/api/forms/<int:fid>/check")
+@login_required("staff")
+def api_check(fid):
+    """Try a question from the builder preview: grade the teacher's answer with the real grading rules."""
+    own_form(fid)
+    data = request.get_json(silent=True) or {}
+    try:
+        q = clean_question(data.get("question") or {})
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    if is_manual(q) or q["type"] not in AUTO:
+        return jsonify(ok=True, manual=True)
+    if not has_key(q):
+        return jsonify(ok=True, nokey=True)
+    from .grading import grade_auto, is_empty
+
+    value = data.get("value")
+    points = eff_points(q)
+    got = 0.0 if is_empty(value) else grade_auto(q, value)
+    return jsonify(ok=True, points=got, max=points, correct=correct_text(q), empty=is_empty(value))
+
+
 @bp.post("/api/forms/<int:fid>/save")
 @login_required("staff")
 def api_save(fid):
@@ -762,7 +796,10 @@ def api_save(fid):
         try:
             cleaned.append(clean_question(raw if isinstance(raw, dict) else {}))
         except ValueError as exc:
-            return jsonify(ok=False, error=t("err_question_n", n=index + 1, msg=str(exc)), index=index), 400
+            # number questions the way the teacher sees them: titles / reading texts are not counted
+            number = sum(1 for r in raw_questions[: index + 1] if isinstance(r, dict) and r.get("type") != "section")
+            label = t("err_question_n", n=number, msg=str(exc)) if (raw or {}).get("type") != "section" else f"{t('type_section')}: {exc}"
+            return jsonify(ok=False, error=label, index=index), 400
     db = get_db()
     stamp = now()
     db.execute(
