@@ -265,6 +265,7 @@ def edit_form(fid):
         "explanation_btn", "explanation_ph", "cb_deduct", "cb_calc_all", "cb_calc_partial", "cb_calc_deduct", "cb_calc_no_deduct",
         "cb_calc_none", "match_wrong_add", "match_wrong_ph", "match_hint_one", "draw_small", "draw_medium", "draw_large", "draw_xl",
         "partial_line", "sec_reading_ph", "option_n",
+        "draw_on_image", "draw_on_image_note", "draw_need_image", "draw_on_image_hint", "change_image", "add_image",
         "n_incomplete_one",
         "n_incomplete",
         "waiting_complete",
@@ -703,6 +704,8 @@ def clean_question(raw, draft=False):
     elif kind == "draw":
         raw_opts = options if isinstance(options, dict) else {}
         out["options"] = {"lines": bool(raw_opts.get("lines", True)), "height": _int(raw_opts.get("height"), 200, 900, 380)}
+        if raw_opts.get("on_image"):  # optional: the student draws on the question picture
+            out["options"]["on_image"] = True
     elif kind == "scale":
         raw_opts = options if isinstance(options, dict) else {}
         out["options"] = {

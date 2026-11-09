@@ -368,7 +368,9 @@
     var pad = box.querySelector(".draw-pad");
     var state = box.querySelector("[data-draw-state]");
     var nameEl = box.querySelector("[data-file-name]");
-    var lines = box.getAttribute("data-lines") === "1";
+    var bgUrl = box.getAttribute("data-bg");  /* drawing on the question picture */
+    var bg = null;
+    var lines = !bgUrl && box.getAttribute("data-lines") === "1";
     var LOGICAL_H = Math.round(parseInt(box.getAttribute("data-height"), 10) * LOGICAL_W / 720) || 520;
     var ctx = canvas.getContext("2d");
     var strokes = [];
@@ -436,6 +438,7 @@
       var o = out.getContext("2d");
       o.fillStyle = "#fff";
       o.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+      if (bg) o.drawImage(bg, 0, 0, LOGICAL_W, LOGICAL_H);  /* the teacher sees the marks on the picture */
       if (lines) {
         o.strokeStyle = "#cbd5e1"; o.lineWidth = 1.5;
         for (var y = 64; y < LOGICAL_H; y += 64) { o.beginPath(); o.moveTo(0, y); o.lineTo(LOGICAL_W, y); o.stroke(); }
@@ -546,6 +549,18 @@
       var img = new Image();
       img.onload = function () { base = img; paint(ctx, scale); };
       img.src = cfg.fileUrl.replace(/\/0$/, "/" + qid) + "?t=" + Date.now();
+    }
+    if (bgUrl) {
+      box.classList.add("on-img");
+      var pic = new Image();
+      pic.onload = function () {
+        bg = pic;
+        LOGICAL_H = Math.max(200, Math.min(2400, Math.round(LOGICAL_W * pic.naturalHeight / Math.max(1, pic.naturalWidth))));
+        pad.style.backgroundImage = "url(\"" + bgUrl + "\")";
+        pad.style.backgroundSize = "100% 100%";
+        resize();
+      };
+      pic.src = bgUrl;
     }
     resize();
   }

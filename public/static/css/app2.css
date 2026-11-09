@@ -435,3 +435,13 @@ input[data-num] { font-variant-numeric: tabular-nums; }
 .builder .q-collapsed > .q-status.warn { flex-shrink: 1; min-width: 0; overflow: hidden; }
 .builder .q-collapsed > .q-status.warn span { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 480px) { .builder .q-collapsed .type-chip-sm { display: none; } }
+
+/* draw on the question picture */
+.draw-img-opt { display: flex; flex-direction: column; gap: 8px; border: 1px solid #E2E8F0; border-radius: 12px; padding: 10px 12px; }
+.draw-img-opt.on { border-color: #93C5FD; background: #EFF6FF; }
+.draw-img-thumb { display: flex; align-items: center; gap: 10px; }
+.draw-img-thumb img { max-height: 90px; max-width: 200px; border-radius: 8px; border: 1px solid #E2E8F0; background: #fff; }
+.draw-img-empty { display: flex; align-items: center; gap: 8px; color: #B45309; font-weight: 700; font-size: 0.88rem; flex-wrap: wrap; }
+.pv-draw.on-img { height: auto; position: relative; background: #fff; }
+.pv-draw.on-img img { display: block; width: 100%; border-radius: 9px; }
+.draw-q.on-img .draw-pad { background-repeat: no-repeat; }

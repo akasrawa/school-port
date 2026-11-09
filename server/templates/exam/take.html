@@ -41,7 +41,7 @@
     {% if q.type == 'section' %}
     <section class="card section-block" id="q-{{ q.id }}">
       {% if q.text %}<h2 class="section-head" dir="{{ qd }}">{{ q.text | rich }}</h2>{% endif %}
-      {% if q.image %}<img class="q-img" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}
+      {% if q.image and not (q.type == 'draw' and (q.options or {}).get('on_image')) %}<img class="q-img" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}
       {% if q.audio %}<audio class="q-audio" controls preload="none" src="{{ media_url(q.audio) }}"></audio>{% endif %}
       {% if q.description %}<div class="passage" dir="{{ qd }}">{{ q.description | rich }}</div>{% endif %}
     </section>
@@ -56,7 +56,7 @@
       </header>
       <h3 class="q-text" id="qt-{{ q.id }}" dir="{{ qd }}">{{ q.text | rich }}</h3>
       {% if q.description %}<p class="q-desc" dir="{{ qd }}">{{ q.description | rich }}</p>{% endif %}
-      {% if q.image %}<img class="q-img" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}
+      {% if q.image and not (q.type == 'draw' and (q.options or {}).get('on_image')) %}<img class="q-img" src="{{ media_url(q.image) }}" alt="" loading="lazy">{% endif %}
       {% if q.audio %}<audio class="q-audio" controls preload="none" src="{{ media_url(q.audio) }}"></audio>{% endif %}
       {% if ex.attachment %}<a class="q-attach" href="{{ media_url(ex.attachment.name) }}?name={{ ex.attachment.label | urlencode }}" target="_blank" rel="noopener">{{ icon('download', 15) }}{{ ex.attachment.label }}</a>{% endif %}
 
@@ -129,7 +129,7 @@
         </div>
       {% elif q.type == 'draw' %}
         {% set dopt = q.options or {} %}
-        <div class="draw-q" data-draw="{{ q.id }}" data-has="{{ 1 if files.get(q.id) else 0 }}" data-lines="{{ 1 if dopt.get('lines', True) else 0 }}" data-height="{{ dopt.get('height', 380) }}">
+        <div class="draw-q" data-draw="{{ q.id }}" data-has="{{ 1 if files.get(q.id) else 0 }}" data-lines="{{ 1 if dopt.get('lines', True) else 0 }}" data-height="{{ dopt.get('height', 380) }}"{% if dopt.get('on_image') and q.image %} data-bg="{{ media_url(q.image) }}"{% endif %}>
           <div class="draw-tools" role="toolbar">
             <button type="button" class="tool on" data-tool="pen" title="{{ t('draw_pen') }}">✎ <span>{{ t('draw_pen') }}</span></button>
             <button type="button" class="tool" data-tool="eraser" title="{{ t('draw_eraser') }}">⌫ <span>{{ t('draw_eraser') }}</span></button>
@@ -208,5 +208,5 @@
   'uploading': t('uploading'), 'time_up': t('time_up'), 'submitting': t('submitting'), 'violations': t('violations'),
   'offline': t('offline'), 'draw_clear_confirm': t('draw_clear_confirm')
 } | tojson }};</script>
-<script src="{{ url_for('static', filename='js/exam.js') }}?v=4" defer></script>
+<script src="{{ url_for('static', filename='js/exam.js') }}?v=5" defer></script>
 {% endblock %}

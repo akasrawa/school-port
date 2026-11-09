@@ -516,7 +516,7 @@
     [imgInput, audInput, attInput].forEach(function (i) { box.appendChild(i); });
 
     var strip = h("div", { class: "media-strip" });
-    if (q.image) strip.appendChild(h("span", { class: "media-item" }, [
+    if (q.image && !(q.type === "draw" && q.options && q.options.on_image)) strip.appendChild(h("span", { class: "media-item" }, [
       h("img", { src: media(q.image), alt: "", class: "q-img-thumb" }),
       iconButton("x", T.remove_image, function () { q.image = ""; touch(q); render(); }, { danger: true })]));
     if (q.audio) strip.appendChild(h("span", { class: "media-item" }, [
@@ -1289,10 +1289,29 @@
       hSeg.appendChild(h("button", { type: "button", class: cur === z[0] ? "on" : "", role: "radio", "aria-checked": cur === z[0] ? "true" : "false", text: z[1],
         onclick: function () { q.options.height = z[0]; touch(q); render(); } }));
     });
-    return h("div", { class: "q-fields" }, [
-      h("div", { class: "q-row" }, [h("span", { class: "gm-label", text: T.draw_height }), hSeg, h("span", { class: "spacer" }),
-        h("label", { class: "check", style: "margin:0" }, [linesBox, h("span", { text: T.draw_lines })])]),
-      h("p", { class: "q-hint", text: T.draw_note })]);
+    /* draw on the question picture: circle, tick, join with lines, write in the boxes */
+    var onImg = !!q.options.on_image;
+    var imgBox = h("input", { type: "checkbox", onchange: function () {
+      if (imgBox.checked) q.options.on_image = true; else delete q.options.on_image;
+      touch(q); render();
+    } });
+    imgBox.checked = onImg;
+    var picker = fileInput("image/*", function (f) { upload(f, f.name, null, function (res) { q.image = res.name; touch(q); render(); }); });
+    var imgRow = h("div", { class: "draw-img-opt" + (onImg ? " on" : "") }, [
+      h("label", { class: "check switch", style: "margin:0" }, [imgBox, h("span", { text: T.draw_on_image })]),
+      h("small", { class: "muted", text: T.draw_on_image_note })]);
+    if (onImg) {
+      if (q.image) imgRow.appendChild(h("div", { class: "draw-img-thumb" }, [h("img", { src: media(q.image), alt: "" }),
+        chipButton("image", T.change_image, function () { picker.click(); })]));
+      else imgRow.appendChild(h("div", { class: "draw-img-empty" }, [h("span", { html: icon("alert", 14) }), h("span", { text: T.draw_need_image }),
+        chipButton("image", T.add_image, function () { picker.click(); })]));
+      imgRow.appendChild(picker);
+    }
+    var parts = [imgRow];
+    if (!onImg) parts.push(h("div", { class: "q-row" }, [h("span", { class: "gm-label", text: T.draw_height }), hSeg, h("span", { class: "spacer" }),
+      h("label", { class: "check", style: "margin:0" }, [linesBox, h("span", { text: T.draw_lines })])]));
+    parts.push(h("p", { class: "q-hint", text: onImg ? T.draw_on_image_hint : T.draw_note }));
+    return h("div", { class: "q-fields" }, parts);
   }
 
   /* ================= type picker (add between questions) ================= */
@@ -1471,7 +1490,7 @@
       if (q.description) out += '<div class="pv-passage" dir="' + esc(dir) + '">' + rich(q.description) + "</div>";
     } else {
       if (q.description) out += '<p class="pv-hint" dir="' + esc(dir) + '">' + rich(q.description) + "</p>";
-      if (q.image) out += '<img class="pv-img" src="' + esc(media(q.image)) + '" alt="">';
+      if (q.image && !(q.type === "draw" && q.options && q.options.on_image)) out += '<img class="pv-img" src="' + esc(media(q.image)) + '" alt="">';
       if (q.audio) out += '<audio class="pv-audio-el" controls preload="none" src="' + esc(media(q.audio)) + '"></audio>';
       if (q.extra.attachment) out += '<div class="pv-file">' + icon("clip", 14) + " " + esc(q.extra.attachment.label || "") + "</div>";
       var tryable = TRY_TYPES.indexOf(q.type) !== -1;
@@ -1686,7 +1705,10 @@
     if (q.type === "short" || q.type === "number" || q.type === "date") return '<div class="pv-input"' + d + ">" + esc(q.type === "date" ? "yyyy-mm-dd" : T.your_answer) + "</div>";
     if (q.type === "paragraph") return '<div class="pv-input tall"' + d + ">" + esc(T.your_answer) + "</div>";
     if (q.type === "file") return '<div class="pv-input">' + icon("clip", 14) + " " + esc(T.choose_file) + "</div>";
-    if (q.type === "draw") return '<div class="pv-draw' + (o && o.lines === false ? "" : " lined") + '"></div>';
+    if (q.type === "draw") {
+      if (o && o.on_image && q.image) return '<div class="pv-draw on-img"><img src="' + esc(media(q.image)) + '" alt=""></div>';
+      return '<div class="pv-draw' + (o && o.lines === false ? "" : " lined") + '"></div>';
+    }
     if (q.type === "fill") return fillPreviewHtml(q);
     if (q.type === "scale") return scaleHtml(o || {}, 0);
     if (q.type === "order") {

@@ -602,4 +602,8 @@ EXTRA = {
     "draw_xl": ('Extra large', 'كبيرة جداً'),
     "partial_line": ('Partial marks: you give each blank a mark while grading (up to {n}).', 'الدرجات الجزئية: تعطي كل فراغ درجته وقت التصحيح (حتى {n}).'),
     "sec_reading_ph": ('Reading passage or instructions (optional)', 'نص القراءة أو التعليمات (اختياري)'),
+    "draw_on_image": ('Draw on the question picture', 'الرسم فوق صورة السؤال'),
+    "draw_on_image_note": ('The student circles, ticks, joins with lines or writes in the boxes on the picture itself.', 'يضع الطالب دائرة أو علامة أو يصل بخطوط أو يكتب في المربعات على الصورة نفسها.'),
+    "draw_need_image": ('Add the worksheet picture', 'أضف صورة ورقة السؤال'),
+    "draw_on_image_hint": ('Works with a finger, Apple Pencil, stylus or mouse on iPad, Android and computers. Graded by the teacher, who sees the picture with the student\'s marks.', 'يعمل بالإصبع أو قلم الآيباد أو القلم أو الفأرة على الآيباد والأندرويد والحاسوب. يصححه المعلم ويرى الصورة مع علامات الطالب.'),
 }
