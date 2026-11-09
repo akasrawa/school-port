@@ -121,7 +121,8 @@ def order_accepted(q):
     return out
 
 
-def load_questions(db, form_id):
+def load_questions(db, form_id, include_incomplete=False):
+    """Questions of an exam. Unfinished drafts (extra.incomplete) are only returned to the builder."""
     rows = db.execute(
         "SELECT * FROM questions WHERE form_id=? ORDER BY position, id", (form_id,)
     ).fetchall()
@@ -132,6 +133,8 @@ def load_questions(db, form_id):
         q["correct"] = jl(row["correct_json"], None)
         extra = jl(row["extra_json"], None) if "extra_json" in row.keys() else None
         q["extra"] = extra if isinstance(extra, dict) else {}
+        if q["extra"].get("incomplete") and not include_incomplete:
+            continue
         out.append(q)
     return out
 
@@ -194,7 +197,8 @@ def grade_auto(q, value):
             if chosen == correct:
                 return points
             if q.get("partial"):
-                ratio = (len(chosen & correct) - len(chosen - correct)) / len(correct)
+                deduct = (q.get("extra") or {}).get("cb_deduct", True)  # older questions: wrong ticks take marks away
+                ratio = (len(chosen & correct) - (len(chosen - correct) if deduct else 0)) / len(correct)
                 return round(max(0.0, ratio) * points, 2)
             return 0.0
         if kind == "short":

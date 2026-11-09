@@ -110,7 +110,7 @@
       {% if it.max > 0 %}
       <div class="grade-row">
         <label class="field inline"><span>{{ t('score') }}</span>
-          <input type="number" step="0.25" min="0" max="{{ it.max }}" name="points_{{ q.id }}" id="points_{{ q.id }}" dir="ltr" data-points
+          <input type="text" inputmode="decimal" autocomplete="off" data-num maxlength="7" name="points_{{ q.id }}" id="points_{{ q.id }}" dir="ltr" data-points
                  value="{{ fmt_num(a.points) if a and a.points is not none else '' }}" placeholder="0 – {{ fmt_num(it.max) }}" {{ 'readonly' if per_blank }}>
           <span class="muted">/ {{ fmt_num(it.max) }}</span></label>
         {% if it.manual_type and not per_blank %}
@@ -152,20 +152,22 @@
   (function () {
     var maxScore = {{ attempt.max_score | tojson }};
     function fmt(n) { return String(Math.round(n * 100) / 100); }
+    function lat(v) { return window.Digits ? window.Digits.latin(v) : String(v); }
+    function put(el, v) { if (window.Digits) window.Digits.setNum(el, v); else el.value = v; }
     function total() {
       var sum = 0;
-      document.querySelectorAll('[data-points]').forEach(function (el) { sum += parseFloat(el.value) || 0; });
+      document.querySelectorAll('[data-points]').forEach(function (el) { sum += parseFloat(lat(el.value)) || 0; });
       document.getElementById('live-total').textContent = fmt(sum) + ' / ' + fmt(maxScore);
     }
     function blankTotal(box) {
       var max = parseFloat(box.getAttribute('data-max')) || 0, sum = 0, any = false;
       box.querySelectorAll('input[type=hidden]').forEach(function (h) { if (h.value !== '') { any = true; sum += parseFloat(h.value) || 0; } });
       var target = document.getElementById(box.getAttribute('data-target'));
-      if (target && any) target.value = fmt(Math.min(max, sum));
+      if (target && any) put(target, fmt(Math.min(max, sum)));
     }
     document.addEventListener('click', function (e) {
       var b = e.target.closest('[data-quick]');
-      if (b) { b.closest('.grade-row').querySelector('input[type=number]').value = b.getAttribute('data-quick'); total(); return; }
+      if (b) { put(b.closest('.grade-row').querySelector('[data-points]'), fmt(parseFloat(b.getAttribute('data-quick')) || 0)); total(); return; }
       var g = e.target.closest('.bg-btn');
       if (g) {
         var row = g.closest('.bg-row');

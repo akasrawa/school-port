@@ -95,6 +95,11 @@ def gen_password(length=6):
 _DIGITS_IN = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 
 
+def latin_digits(value):
+    """Arabic-Indic digits and the Arabic decimal mark → 0-9 and "." (number fields follow the interface's digits)."""
+    return str(value or "").translate(_DIGITS_IN).replace("٫", ".").replace(",", ".")
+
+
 def clean_username(value):
     # usernames are stored with 0-9 digits; phones with an Arabic keyboard may type ٠-٩
     return " ".join(str(value or "").translate(_DIGITS_IN).split())[:80]

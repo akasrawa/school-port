@@ -303,3 +303,135 @@ body { overflow-x: clip; }
 .col-main .exam-actions { justify-content: flex-start; }
 .exam-actions .btn.sm { padding: 0.32rem 0.6rem; }
 .table td.flags .btn { margin-inline-end: 0.3rem; margin-block: 0.1rem; }
+
+/* ===================== builder v2.9 · phase 3: question card ===================== */
+.builder-page .container { width: min(1200px, 100% - 2rem); }
+.builder-grid { grid-template-columns: minmax(0, 780px) 360px; gap: 24px; justify-content: center; }
+.builder .q-list { gap: 0; }
+
+/* card frame: the edge colour shows the state only */
+.builder .q-list .qcard, .builder .q-list .qcard.manual, .builder .q-list .qcard.info, .builder .q-list .qcard.no-key, .builder .q-list .qcard.section {
+  padding: 0; border: 1px solid #CBD5E1; border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 6px rgba(15, 23, 42, 0.04); overflow: visible; }
+.builder .q-list .qcard.warn { border: 1.5px solid #F59E0B; background: #FFFBEB; }
+.builder .q-list .qcard.focus { border: 2px solid #2563EB; box-shadow: 0 0 0 4px #DBEAFE; background: #fff; }
+.builder .q-list .qcard.collapsed.warn { background: #FFFBEB; }
+
+/* card head: grey strip, 56px */
+.builder .qcard .qcard-head { min-height: 56px; margin: 0; padding: 0 20px 0 12px; padding-inline: 12px 14px; gap: 10px; background: #F8FAFC; border-bottom: 1px solid #E2E8F0;
+  border-radius: 13px 13px 0 0; flex-wrap: nowrap; cursor: pointer; }
+.builder .qcard.focus .qcard-head { border-radius: 12px 12px 0 0; }
+.builder .qcard.warn .qcard-head { background: #FEF3C7; border-bottom-color: #FDE68A; }
+.builder .qcard .qcard-head .qtype { min-width: 0; width: auto; height: 36px; min-height: 36px; padding-block: 0; font-size: 0.9rem; background-color: #fff; }
+.builder .qcard .qcard-head .q-num, .builder .qcard .q-collapsed .q-num { width: 28px; height: 28px; border-radius: 8px; font-size: 0.85rem; }
+.builder .qcard-tools { flex-wrap: nowrap; gap: 2px; }
+.builder .qcard-tools .icon-btn { width: 32px; height: 32px; }
+.builder .qcard .grip { width: 20px; height: 32px; }
+.builder .qcard .grip:focus-visible { outline: 2px solid var(--blue); }
+
+/* card body: 20px padding, 12px between elements */
+.builder .qcard .qcard-body { padding: 20px; gap: 12px; }
+.builder .qcard .qcard-body .q-fields { gap: 12px; }
+.builder .qcard input[type="text"], .builder .qcard input[type="number"], .builder .qcard select, .builder .qcard textarea { border: 1px solid #E2E8F0; }
+.builder .qcard .qcard-body input[type="text"], .builder .qcard .qcard-body input[type="number"], .builder .qcard .qcard-body select { min-height: 44px; height: 44px; }
+.builder .qcard textarea { resize: none; overflow: hidden; min-height: 44px; }
+.builder .qcard .opt-line { min-height: 46px; padding-block: 0; border: 1px solid #E2E8F0; }
+.builder .qcard .opt-line input[type="text"] { min-height: 40px; height: 40px; border: 0; }
+.builder .qcard .opt-line.correct { border-color: var(--green); }
+.builder .qcard .opt-editor { gap: 8px; }
+.builder .qcard .pair-cell input, .builder .qcard .pair-cell input[type="text"] { border: 0; min-height: 40px; height: 40px; }
+.builder .qcard .pair-cell { border: 1px solid #E2E8F0; min-height: 46px; }
+
+/* one orange warning per card */
+.q-warn { display: flex; align-items: center; gap: 0.4rem; margin: 0; color: #B45309; font-weight: 700; font-size: 0.9rem; }
+.q-warn[hidden] { display: none; }
+
+/* question text = heading; toolbar only while it has focus */
+.builder .qcard .text-box { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.builder .qcard .text-box:focus-within { box-shadow: none; }
+.builder .qcard .text-box textarea { font-size: 18px; font-weight: 600; line-height: 1.6; border: 0; border-bottom: 1.5px solid #E2E8F0; border-radius: 0; padding: 4px 2px 8px; min-height: 44px; background: transparent; }
+.builder .qcard .text-box textarea:focus { border-bottom: 2px solid #2563EB; box-shadow: none !important; outline: none; }
+.builder .qcard .text-box .fmt-bar { display: none; border: 1px solid #E2E8F0; border-radius: 10px; background: #F8FAFC; margin-block-end: 6px; }
+.builder .qcard .text-box:focus-within .fmt-bar { display: flex; }
+.builder .qcard .media-strip { border-top: 0; padding: 6px 0 0; }
+
+/* explanation toggle */
+.expl-btn { gap: 0.35rem; }
+.expl-btn.on { color: #fff; background: #2563EB; border-color: #2563EB; }
+.expl-btn.on:hover { color: #fff; background: #1D4ED8; }
+.expl-field[hidden] { display: none; }
+.builder .qcard .opt-tools { gap: 8px; }
+.partial-line { font-size: 0.82rem; color: #64748B; margin: 0; }
+
+/* collapsed card: 60px */
+.builder .q-list .qcard.collapsed { padding: 0; min-height: 60px; }
+.builder .qcard.collapsed .qcard-row { min-height: 58px; padding-inline: 12px 14px; gap: 10px; }
+.builder .qcard.collapsed .q-collapsed { padding-block: 0; min-height: 58px; gap: 10px; }
+.builder .qcard.collapsed .q-sum-text { font-weight: 600; }
+
+/* section card */
+.builder .q-list .qcard.section { background: #F5F3FF; border-color: #DDD6FE; }
+.builder .q-list .qcard.section.focus { border: 2px solid #7C3AED; box-shadow: 0 0 0 4px #EDE9FE; background: #F5F3FF; }
+.builder .qcard.section .qcard-head { background: #EDE9FE; border-bottom-color: #DDD6FE; }
+.builder .qcard.section .text-box textarea { font-size: 20px; font-weight: 700; border-bottom-color: #DDD6FE; }
+.builder .qcard.section textarea.sec-body { min-height: calc(4 * 1.7em + 20px); line-height: 1.7; background: #fff; }
+.builder .qcard.section .q-num.sec { background: #7C3AED; }
+
+/* gaps between cards */
+.builder .q-gap { height: 18px; }
+
+@media (max-width: 1100px) { .builder-grid { grid-template-columns: minmax(0, 780px); } }
+@media (max-width: 640px) {
+  .builder .qcard .qcard-head { flex-wrap: wrap; padding-block: 8px; }
+  .builder .qcard .qcard-body { padding: 14px; }
+}
+.builder .q-gap { height: 26px; }
+.builder .gap-add { padding-block: 0; font-size: 0.75rem; }
+.builder .qcard.focus .qcard-head { background: #F8FAFC; border-bottom-color: #E2E8F0; }
+.builder .qcard.section.focus .qcard-head { background: #EDE9FE; border-bottom-color: #DDD6FE; }
+/* the toolbar floats above the question text, so showing/hiding it never moves the page */
+.builder .qcard .text-box { position: relative; }
+.builder .qcard .text-box .fmt-bar { position: absolute; bottom: calc(100% + 2px); inset-inline-start: 0; z-index: 6; margin: 0; padding: 2px 4px;
+  background: #fff; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12); flex-wrap: nowrap; }
+.builder .qcard .text-box .fmt { height: 30px; }
+
+/* ===================== builder v2.9 · phase 4: question types ===================== */
+.opt-letter { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #F1F5F9; color: #334155; font-weight: 800; font-size: 0.85rem; margin-inline: 2px; }
+.builder .qcard.t-checkbox .opt-line .pick { border-radius: 4px; }
+.cb-scoring .cb-calc { color: #334155; background: #fff; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 0.35rem 0.6rem; font-weight: 600; }
+.tf-btn.plain { cursor: default; color: var(--ink); background: #fff; border-color: #E2E8F0; }
+.builder .qcard .pair-line { grid-template-columns: 28px minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+.pair-num { width: 26px; height: 26px; border-radius: 50%; background: #EFF6FF; color: #1D4ED8; display: grid; place-items: center; font-weight: 800; font-size: 0.85rem; }
+.builder .qcard .pair-head { grid-template-columns: 28px minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+.builder .qcard .pair-head > span:first-child { grid-column: 2; }
+.wrong-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wrong-chip { display: inline-flex; align-items: center; gap: 0.2rem; background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; border-radius: 999px; padding: 0.1rem 0.3rem 0.1rem 0.65rem; padding-inline: 0.65rem 0.3rem; font-size: 0.85rem; font-weight: 600; }
+.wrong-chip button { border: 0; background: none; color: inherit; cursor: pointer; display: grid; padding: 2px; border-radius: 50%; }
+.wrong-chip button:hover { background: rgba(0, 0, 0, 0.06); }
+.wrong-add { font-size: 0.8rem; padding: 0.15rem 0.65rem; border-style: dashed; color: #991B1B; border-color: #FECACA; }
+.builder .qcard input.wrong-input { width: 12rem; height: 32px; min-height: 32px; border-radius: 999px; }
+.size-seg button { padding: 0.4rem 0.9rem; }
+.size-seg button.on { background: var(--blue); }
+@media (max-width: 720px) {
+  .builder .qcard .pair-line { grid-template-columns: 28px minmax(0, 1fr) auto; }
+  .builder .qcard .pair-line .pair-cell:nth-of-type(2) { grid-column: 2; }
+}
+
+/* ===================== builder v2.9 · phase 5: side preview ===================== */
+.try-btn[hidden] { display: none !important; }
+.pv-opt.ghost { color: #94A3B8; border-style: dashed; background: #F8FAFC; }
+.pv-opt.ghost .pv-mark { border-color: #CBD5E1; }
+.pv-result .res { font-weight: 600; }
+
+/* ===================== v2.9 · phase 6 ===================== */
+/* the tabs row scrolled sideways only; a stray vertical scrollbar showed as an extra "|" */
+.tabs { overflow-y: hidden; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+input[data-num] { font-variant-numeric: tabular-nums; }
+.builder .q-list { grid-template-columns: minmax(0, 1fr); }
+.builder .q-list .qcard, .builder .qcard .qcard-body { min-width: 0; }
+.builder .qcard .qcard-body { grid-template-columns: minmax(0, 1fr); }
+.builder .q-collapsed > * { flex-shrink: 0; }
+.builder .q-collapsed > .q-sum-text { flex: 1 1 0; }
+.builder .q-collapsed > .q-status.warn { flex-shrink: 1; min-width: 0; overflow: hidden; }
+.builder .q-collapsed > .q-status.warn span { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 480px) { .builder .q-collapsed .type-chip-sm { display: none; } }

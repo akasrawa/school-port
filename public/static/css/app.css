@@ -866,3 +866,15 @@ details.menu[open] > .act { background: var(--c); color: #fff; }
 @media (max-width: 720px) { .builder-bar.stuck .builder-actions .btn span, .builder-bar.stuck .save-state span { display: none; } }
 .builder-bar.stuck .title-input { font-size: 1rem !important; padding-block: 0.2rem !important; }
 .builder-bar.stuck .builder-title { min-width: 0; flex: 1; }
+
+/* ===================== builder v2.9 ===================== */
+/* phase 2: compact top bar, one line (~52px) */
+.builder-bar { top: 64px; }
+.builder-bar.stuck { height: 52px; min-height: 52px; padding-block: 0; padding-inline: 0.9rem; border-radius: 0 0 14px 14px; flex-wrap: nowrap; overflow: hidden; }
+.builder-bar.stuck .builder-title { flex-wrap: nowrap; }
+.builder-bar.stuck .title-input { max-width: 22rem; flex: 0 1 auto; height: 34px; }
+.builder-bar.stuck #status-badge { display: inline-flex; }
+.builder-bar.stuck #status-badge .badge { font-size: 0.72rem; padding: 0.1rem 0.5rem; }
+.builder-bar.stuck .builder-actions { flex-wrap: nowrap; }
+.builder-bar.stuck .builder-actions .btn { height: 34px; }
+@media (max-width: 1100px) { .builder-bar.stuck .builder-actions .btn span, .builder-bar.stuck .hide-sm { display: none; } }

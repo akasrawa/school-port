@@ -32,7 +32,7 @@ TEXT = {
     "email": ("Email", "البريد الإلكتروني"),
     "min": ("min", "دقيقة"),
     "points": ("points", "درجة"),
-    "true": ("True", "صحيح"),
+    "true": ("True", "صح"),
     "false": ("False", "خطأ"),
     "hidden": ("Hidden", "مخفي"),
     "failed": ("Failed", "فشل"),

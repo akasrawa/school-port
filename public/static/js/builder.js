@@ -25,7 +25,13 @@
 
   var settings = data.settings;
   var questions = data.questions;
-  questions.forEach(function (q) { q.extra = q.extra && typeof q.extra === "object" ? q.extra : {}; });
+  function padEmpty(q) {  /* an unfinished question comes back from autosave without its empty rows */
+    q.extra = q.extra && typeof q.extra === "object" ? q.extra : {};
+    if (CHOICE.indexOf(q.type) !== -1) { q.options = Array.isArray(q.options) ? q.options : []; while (q.options.length < 2) q.options.push(""); }
+    if (q.type === "match") { q.options = q.options && typeof q.options === "object" ? q.options : {}; if (!(q.options.pairs || []).length) q.options.pairs = [["", ""]]; }
+    return q;
+  }
+  questions.forEach(padEmpty);
   var revision = 0, savedRevision = 0, saving = false, saveTimer = null, retryTimer = null, retryDelay = 3000;
   var pendingFocus = null, activeIndex = 0, previewTimer = null, device = "phone";
 
@@ -68,7 +74,16 @@
     return html.replace(/\n/g, "<br>");
   }
   function media(name) { return data.mediaBase.replace("__NAME__", name); }
-  function num(n) { return Math.round((parseFloat(n) || 0) * 100) / 100; }
+  function num(n) { return Math.round((parseFloat(latin(n)) || 0) * 100) / 100; }
+  /* number fields show the interface's digits (digits.js) and are read back as 0-9 */
+  function latin(v) { return window.Digits ? window.Digits.latin(v) : String(v == null ? "" : v); }
+  function numVal(el) { return parseFloat(latin(el.value)); }
+  function setNumInput(el, v) { if (window.Digits) window.Digits.setNum(el, v); else el.value = v; }
+  function numInput(props) {
+    var el = h("input", Object.assign({ type: "text", inputmode: "decimal", autocomplete: "off", "data-num": "1", dir: "ltr" }, props));
+    if (window.Digits) window.Digits.numField(el);
+    return el;
+  }
   function shown(text) { return String(text || "").split(INV).join(""); }
 
   var ICONS = {
@@ -90,6 +105,7 @@
     cloudoff: '<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2"/><path d="M21.53 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10.5 5.07"/>',
     spin: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>', blank: '<path d="M4 17h16"/><path d="M8 13h8"/><path d="M12 5v4"/>',
     eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
     star: '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>'
   };
   function icon(name, size) {
@@ -127,8 +143,7 @@
       saved: ["ok", "cloud", T.saved_ok],
       saving: ["busy", "spin", T.saving_now],
       offline: ["off", "cloudoff", T.offline_retry],
-      error: ["off", "alert", T.save_needs_fix],
-      waiting: ["busy-idle", "", T.waiting_complete],
+      error: ["off", "cloudoff", T.offline_retry],
       idle: ["", "", ""]
     };
     var m = map[state] || map.idle;
@@ -213,6 +228,7 @@
     var c = q.correct;
     var missing = c === null || c === undefined || (Array.isArray(c) && !c.length);
     if (!missing) return "";
+    if (q.type === "checkbox") return T.warn_pick_correct_multi;
     return (CHOICE.indexOf(q.type) !== -1 || q.type === "truefalse") ? T.warn_pick_correct : T.warn_add_answer;
   }
 
@@ -272,11 +288,18 @@
     el.innerHTML = q.type === "section" || pending ? "" : issue ? icon("alert", 14) + "<span></span>" : icon("check", 15);
     if (issue) el.querySelector("span").textContent = issue;
   }
+  function fillWarn(el, q) {
+    var issue = shownIssue(q);
+    el.hidden = !issue;
+    el.innerHTML = issue ? icon("alert", 15) + "<span></span>" : "";
+    if (issue) el.querySelector("span").textContent = issue;
+  }
 
   function refreshCardState(q) {
     if (!q._el) return;
     q._el.className = cardClass(q) + (q._el.classList.contains("focus") ? " focus" : "");
     if (q._status) fillStatus(q._status, q);
+    if (q._warn) fillWarn(q._warn, q);
     if (q._sumText) {
       var first = String(q.text || "").split("\n")[0];
       q._sumText.textContent = first || (q.type === "section" ? T.type_section : T.untitled_question);
@@ -288,10 +311,21 @@
   function renderCard(q, index) {
     var card = h("article", { class: cardClass(q), "data-index": index });
     q._el = card;
+    q._warn = null;
     var number = questions.slice(0, index + 1).filter(function (x) { return x.type !== "section"; }).length;
 
     var grip = h("span", { class: "grip", title: T.drag_hint, html: icon("grip", 16) });
     grip.addEventListener("pointerdown", function (event) { startDrag(event, index, card); });
+    grip.tabIndex = 0;
+    grip.setAttribute("role", "button");
+    grip.setAttribute("aria-label", T.drag_hint);
+    grip.addEventListener("keydown", function (event) {  /* keyboard: arrows move the question */
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      move(index, event.key === "ArrowUp" ? -1 : 1);
+      var g = list.querySelectorAll(".qcard")[Math.max(0, Math.min(questions.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)))];
+      if (g && g.querySelector(".grip")) g.querySelector(".grip").focus();
+    });
 
     var numEl = h("span", { class: "q-num" + (q.type === "section" ? " sec" : ""), text: q.type === "section" ? "§" : String(number) });
     q._sumText = h("span", { class: "q-sum-text", dir: q.extra.dir || "auto" });
@@ -301,7 +335,7 @@
 
     if (q._collapsed) {
       var row = h("button", { type: "button", class: "q-collapsed", "aria-expanded": "false",
-        onclick: function () { q._collapsed = false; activeIndex = index; pendingFocus = { q: q }; render(); } }, [
+        onclick: function () { openCard(index); } }, [
         numEl, q._sumText,
         h("span", { class: "badge soft type-chip-sm", text: T["type_" + q.type] }),
         q._pts, q._status, h("span", { class: "chev", html: icon("down", 16) })
@@ -320,11 +354,8 @@
     });
 
     var head = h("div", { class: "qcard-head" }, [
-      grip, numEl, typeSelect, modeBadge(q), q._pts, h("span", { class: "spacer" }), q._status,
+      grip, numEl, typeSelect, modeBadge(q), q._pts, h("span", { class: "spacer" }),
       h("div", { class: "qcard-tools" }, [
-        iconButton("fold", T.collapse, function () { q._collapsed = true; render(); }, { extraClass: "collapse-btn" }),
-        iconButton("up", T.move_up, function () { move(index, -1); }, { disabled: index === 0 }),
-        iconButton("down", T.move_down, function () { move(index, 1); }, { disabled: index === questions.length - 1 }),
         iconButton("copy", T.duplicate, function () { duplicate(index); }),
         iconButton("bookmark", T.bank_save_one, function () { saveToBank(q); }),
         iconButton("plus", T.insert_here, function (e) { openTypePicker(e.currentTarget, index + 1); }, { extraClass: "add" }),
@@ -334,14 +365,15 @@
 
     head.addEventListener("click", function (e) {
       if (e.target.closest("button, select, input, a, .grip, label")) return;
-      q._collapsed = true;
-      render();
+      keepPlace(card, function () { leave(q); q._collapsed = true; render(); });
     });
     head.title = T.click_to_fold;
     var fields = h("div", { class: "q-fields qcard-body" });
+    q._warn = h("p", { class: "q-warn", role: "status" });
+    fields.appendChild(q._warn);
     fields.appendChild(textEditor(q));
     if (q.type === "section") {
-      var body = h("textarea", { rows: "6", maxlength: "6000", dir: q.extra.dir || "auto", placeholder: T.section_body, "aria-label": T.section_body,
+      var body = h("textarea", { rows: "4", class: "sec-body", maxlength: "6000", dir: q.extra.dir || "auto", placeholder: T.sec_reading_ph, "aria-label": T.section_body,
         oninput: function () { q.description = body.value; touch(q); } });
       body.value = q.description || "";
       fields.appendChild(body);
@@ -366,18 +398,32 @@
 
     if (q.type === "paragraph") fields.appendChild(h("p", { class: "q-hint", text: T.manual_grade_note }));
     if (q.type === "file") fields.appendChild(h("p", { class: "q-hint", text: T.file_upload_note }));
-    if (GRADED.indexOf(q.type) !== -1 && q.manual_grade && q.type !== "fill" && q.type !== "truefalse") {
+    if (GRADED.indexOf(q.type) !== -1 && q.manual_grade && ["fill", "truefalse", "mcq", "checkbox", "dropdown"].indexOf(q.type) === -1) {
       fields.appendChild(h("p", { class: "q-hint warn", text: T.manual_no_key }));
     }
     if (UNSCORED.indexOf(q.type) !== -1 && q.type !== "section") fields.appendChild(h("p", { class: "q-hint", text: T.info_only_note }));
 
     if (GRADED.indexOf(q.type) !== -1 || MANUAL.indexOf(q.type) !== -1) {
-      var explanation = h("input", { type: "text", maxlength: "2000", value: q.explanation, dir: q.extra.dir || "auto",
-        placeholder: T.explanation + " (" + T.explanation_hint + ")", "aria-label": T.explanation,
-        oninput: function () { q.explanation = explanation.value; touch(q); } });
+      var explBtn = h("button", { type: "button", class: "chip expl-btn" + (String(q.explanation || "").trim() ? " on" : ""),
+        "aria-expanded": q._showExpl ? "true" : "false", html: icon("info", 14) + "<span></span>",
+        onclick: function () {
+          q._showExpl = !q._showExpl;
+          explBtn.setAttribute("aria-expanded", q._showExpl ? "true" : "false");
+          explanation.hidden = !q._showExpl;
+          if (q._showExpl) { grow(explanation); explanation.focus(); }
+        } });
+      explBtn.querySelector("span").textContent = T.explanation_btn;
+      var explanation = h("textarea", { rows: "2", maxlength: "2000", dir: q.extra.dir || "auto", class: "expl-field",
+        placeholder: T.explanation_ph, "aria-label": T.explanation, hidden: !q._showExpl,
+        oninput: function () { q.explanation = explanation.value; explBtn.classList.toggle("on", !!explanation.value.trim()); touch(q); } });
+      explanation.value = q.explanation || "";
+      var toolRow = bodyEl && bodyEl.querySelector(".opt-tools");
+      if (!toolRow) { toolRow = h("div", { class: "opt-tools" }); fields.appendChild(toolRow); }
+      toolRow.appendChild(explBtn);
       fields.appendChild(explanation);
     }
-    fields.appendChild(footRow(q));
+    var foot = footRow(q);
+    if (foot.children.length) fields.appendChild(foot);
     card.appendChild(head);
     card.appendChild(fields);
     refreshCardState(q);
@@ -388,9 +434,9 @@
     var row = h("div", { class: "q-row q-foot" });
     var autoFill = q.type === "fill" && !q.manual_grade;
     if (UNSCORED.indexOf(q.type) === -1) {
-      var points = h("input", { type: "number", min: "0", max: "1000", step: "any", dir: "ltr", value: q.points, "aria-label": T.points,
+      var points = numInput({ value: q.points, "aria-label": T.points, maxlength: "7",
         readonly: autoFill, title: autoFill ? T.fill_points_auto : null,
-        oninput: function () { var n = parseFloat(points.value); q.points = isNaN(n) ? 0 : n; touch(q); } });
+        oninput: function () { var n = numVal(points); q.points = isNaN(n) ? 0 : Math.max(0, Math.min(1000, n)); touch(q); } });
       q._pointsInput = points;
       row.appendChild(h("label", { class: "pts" }, [h("span", { text: T.points }), points]));
     }
@@ -424,7 +470,7 @@
   /* ---------- question text: toolbar (B, U, formula, direction, picture, sound, recording, file) ---------- */
   function textEditor(q) {
     var box = h("div", { class: "text-box" });
-    var area = h("textarea", { rows: q.type === "section" ? "1" : "2", maxlength: "1500", dir: q.extra.dir || "auto", "data-q-text": "1",
+    var area = h("textarea", { rows: "1", maxlength: "1500", dir: q.extra.dir || "auto", "data-q-text": "1",
       placeholder: q.type === "section" ? T.section_title : T.question_text, "aria-label": T.question_text,
       oninput: function () { q.text = area.value; area.classList.remove("invalid"); touch(q); } });
     area.value = q.text;
@@ -626,7 +672,7 @@
           q._undoMsg = fmt(T.pasted_n, { n: rows.length });
           touch(q); render();
         } });
-      var mark = manual ? h("span", { class: "opt-bullet" + (multi ? " sq" : ""), "aria-hidden": "true" }) : pick;
+      var mark = manual ? h("span", { class: "opt-letter", "aria-hidden": "true", text: letter(index) }) : pick;
       line.appendChild(mark);
       line.appendChild(input);
       if (checked) line.appendChild(h("span", { class: "correct-tag", text: T.correct_tag }));
@@ -657,16 +703,40 @@
         scoring.appendChild(h("button", { type: "button", class: !!q.partial === m[0] ? "on" : "", text: m[1],
           onclick: function () { q.partial = m[0]; touch(q); render(); } }));
       });
-      box.appendChild(h("div", { class: "cb-scoring" }, [h("small", { class: "muted", text: T.cb_scoring }), scoring,
-        h("small", { class: "muted", text: q.partial ? T.cb_partial_note : T.cb_all_note })]));
+      var parts = [h("small", { class: "muted", text: T.cb_scoring }), scoring];
+      if (q.partial) {
+        var deduct = h("input", { type: "checkbox", onchange: function () {
+          if (deduct.checked) delete q.extra.cb_deduct; else q.extra.cb_deduct = false;
+          touch(q); render();
+        } });
+        deduct.checked = q.extra.cb_deduct !== false;
+        parts.push(h("label", { class: "check switch", style: "margin:0" }, [deduct, h("span", { text: T.cb_deduct })]));
+      }
+      parts.push(h("small", { class: "cb-calc", text: cbCalc(q) }));
+      box.appendChild(h("div", { class: "cb-scoring" }, parts));
     }
-    var tools = h("div", { class: "opt-tools" }, [chipButton("plus", T.add_option, function () { addOption(q, q.options.length); })]);
-    if (q.type !== "dropdown" || true) tools.appendChild(chipButton("spark", T.ai_distractors, function () { suggestDistractors(q, sugBox); }, "ai"));
-    tools.appendChild(h("small", { class: "muted", text: T.options_tip }));
+    var addBtn = chipButton("plus", T.add_option, function () { addOption(q, q.options.length); });
+    addBtn.title = T.options_tip;
+    var tools = h("div", { class: "opt-tools" }, [addBtn]);
+    tools.appendChild(chipButton("spark", T.ai_distractors, function () { suggestDistractors(q, sugBox); }, "ai"));
     box.appendChild(tools);
     var sugBox = h("div", { class: "sug-box", hidden: true });
     box.appendChild(sugBox);
     return box;
+  }
+
+  /* one line that shows how a checkbox question is marked */
+  function cbCalc(q) {
+    var k = (q.correct || []).length, m = num(q.points);
+    if (!k) return T.cb_calc_none;
+    if (!q.partial) return fmt(T.cb_calc_all, { m: m, k: k });
+    var e = num(m / k);
+    return fmt(T.cb_calc_partial, { e: e, m: m }) + " " + (q.extra.cb_deduct === false ? T.cb_calc_no_deduct : fmt(T.cb_calc_deduct, { e: e }));
+  }
+  var LETTERS_AR = ["أ", "ب", "ج", "د", "هـ", "و", "ز", "ح", "ط", "ي", "ك", "ل", "م", "ن", "س", "ع", "ف", "ص", "ق", "ر", "ش", "ت", "ث", "خ", "ذ", "ض", "ظ", "غ"];
+  function letter(i) {
+    if (document.documentElement.lang.slice(0, 2) === "ar") return LETTERS_AR[i] || String(i + 1);
+    return i < 26 ? String.fromCharCode(65 + i) : String(i + 1);
   }
 
   function cleanListItem(line) {
@@ -722,17 +792,17 @@
   /* ---------- true / false: both buttons always visible ---------- */
   function renderTrueFalse(q) {
     var manual = !!q.manual_grade;
-    var box = h("div", { class: "tf-edit" + (manual ? " manual" : "") }, [
-      h("small", { class: "muted", text: manual ? T.tf_manual_hint : T.tf_pick_hint })]);
+    var box = h("div", { class: "tf-edit" + (manual ? " manual" : "") }, manual ? [] : [h("small", { class: "muted", text: T.tf_pick_hint })]);
     var row = h("div", { class: "tf-row", role: manual ? null : "radiogroup", "aria-label": T.correct_answer });
     ["true", "false"].forEach(function (value) {
       var on = !manual && q.correct === value;
-      row.appendChild(h("button", { type: "button", class: "tf-btn" + (on ? " on" : ""), disabled: manual, "aria-pressed": on ? "true" : "false",
+      if (manual) { row.appendChild(h("span", { class: "tf-btn plain", text: T[value] })); return; }
+      row.appendChild(h("button", { type: "button", class: "tf-btn" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false",
         html: (on ? icon("check", 16) + " " : "") + esc(T[value]),
         onclick: function () { q.correct = value; touch(q); render(); } }));
     });
     box.appendChild(row);
-    if (manual) box.appendChild(h("p", { class: "q-hint warn", text: T.manual_no_key }));
+    if (manual) box.appendChild(h("small", { class: "muted", text: T.tf_manual_hint }));
     return box;
   }
 
@@ -749,11 +819,12 @@
   }
 
   function renderNumber(q) {
-    var value = h("input", { type: "number", step: "any", dir: "ltr", value: q.correct && q.correct.value !== undefined ? q.correct.value : "" });
-    var tol = h("input", { type: "number", step: "any", min: "0", dir: "ltr", value: q.correct && q.correct.tolerance ? q.correct.tolerance : "" });
+    var value = numInput({ value: q.correct && q.correct.value !== undefined ? q.correct.value : "" });
+    var tol = numInput({ value: q.correct && q.correct.tolerance ? q.correct.tolerance : "" });
     function sync() {
-      if (value.value === "") q.correct = null;
-      else q.correct = { value: parseFloat(value.value), tolerance: Math.abs(parseFloat(tol.value) || 0) };
+      var v = numVal(value);
+      if (value.value.trim() === "" || isNaN(v)) q.correct = null;
+      else q.correct = { value: v, tolerance: Math.abs(numVal(tol) || 0) };
       touch(q);
     }
     value.addEventListener("input", sync);
@@ -826,13 +897,36 @@
         ["left_images", "right_images"].forEach(function (key) { if (q.extra[key]) { q.extra[key].splice(index, 1); if (!q.extra[key].some(Boolean)) delete q.extra[key]; } });
         touch(q); render();
       }, { danger: true, disabled: q.options.pairs.length <= 1, extraClass: "ghosty" });
-      wrap.appendChild(h("div", { class: "pair-line" }, [side(0, "left_images", (index + 1) + ". " + T.text_or_image), h("span", { class: "pair-arrow", text: "⟷" }), side(1, "right_images", T.text_or_image), del]));
+      wrap.appendChild(h("div", { class: "pair-line" }, [h("span", { class: "pair-num", text: String(index + 1) }), side(0, "left_images", T.text_or_image),
+        h("span", { class: "pair-arrow", text: "⟷" }), side(1, "right_images", T.text_or_image), del]));
     });
-    var extra = h("textarea", { rows: "2", placeholder: T.distractors, oninput: function () { q.options.distractors = lines(extra.value); touch(q); } });
-    extra.value = (q.options.distractors || []).join("\n");
-    return h("div", { class: "q-fields" }, [wrap, h("div", {}, [chipButton("plus", T.add_pair, function () { addPair(q); })]),
-      h("label", { class: "field" }, [h("span", { text: T.distractors }), extra, h("small", { class: "muted", text: T.distractors_hint })]),
-      h("p", { class: "q-hint", text: T.match_images_note })]);
+    var wrongs = q.options.distractors = (q.options.distractors || []).filter(function (x) { return String(x).trim(); });
+    var chips = h("div", { class: "wrong-chips" });
+    wrongs.forEach(function (w, i) {
+      chips.appendChild(h("span", { class: "wrong-chip" }, [h("span", { text: w }),
+        h("button", { type: "button", html: icon("x", 11), title: T.remove, "aria-label": T.remove, onclick: function () { wrongs.splice(i, 1); touch(q); render(); } })]));
+    });
+    var addWrong = h("button", { type: "button", class: "chip wrong-add", html: icon("plus", 13) + "<span></span>", onclick: function () {
+      var inp = h("input", { type: "text", class: "wrong-input", maxlength: "300", placeholder: T.match_wrong_ph, dir: q.extra.dir || "auto",
+        onkeydown: function (e) {
+          if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); inp.blur(); }
+          if (e.key === "Escape") { inp.value = ""; inp.blur(); }
+        },
+        onblur: function () {
+          var v = inp.value.trim();
+          if (v && wrongs.length < 20) { wrongs.push(v); touch(q); }
+          render();
+        } });
+      addWrong.replaceWith(inp);
+      inp.focus();
+    } });
+    addWrong.querySelector("span").textContent = T.match_wrong_add;
+    if (wrongs.length >= 20) addWrong.disabled = true;
+    chips.appendChild(addWrong);
+    return h("div", { class: "q-fields" }, [wrap,
+      h("div", { class: "opt-tools" }, [chipButton("plus", T.add_pair, function () { addPair(q); })]),
+      chips,
+      h("p", { class: "q-hint", text: T.match_hint_one })]);
   }
   function addPair(q) {
     if (q.options.pairs.length >= 40) return;
@@ -971,7 +1065,7 @@
     function changed(rebuildRows) {
       o.template = serialize();
       relabel();
-      if (!manual) { syncFillPoints(q); if (q._pointsInput) q._pointsInput.value = q.points; }
+      if (!manual) { syncFillPoints(q); if (q._pointsInput) setNumInput(q._pointsInput, q.points); }
       if (rebuildRows) rows();
       livePrev();
       touch(q);
@@ -1071,7 +1165,7 @@
           var count = blanks.length, total = parseFloat(q.points) || count;
           var share = num(total / count);
           o.blank_points = blanks.map(function () { return share; });
-          syncFillPoints(q); if (q._pointsInput) q._pointsInput.value = q.points;
+          syncFillPoints(q); if (q._pointsInput) setNumInput(q._pointsInput, q.points);
           rows(); touch(q);
         } })]));
       var chips = ed.querySelectorAll(".fill-chip");
@@ -1110,7 +1204,7 @@
         function step(d) {
           materialize(q);
           o.blank_points[i] = Math.max(0, num((parseFloat(o.blank_points[i]) || 0) + d));
-          syncFillPoints(q); if (q._pointsInput) q._pointsInput.value = q.points;
+          syncFillPoints(q); if (q._pointsInput) setNumInput(q._pointsInput, q.points);
           val.textContent = String(num(o.blank_points[i]));
           totalEl.textContent = String(num(q.points));
           touch(q);
@@ -1141,7 +1235,7 @@
     if (o.bank) parts.push(h("label", { class: "field" }, [h("span", { text: manual ? T.bank_words : T.distractors }), words]));
     if (manual) {
       parts.push(h("p", { class: "q-hint warn", text: T.manual_no_key }));
-      parts.push(h("div", { class: "note-card" }, [h("b", { text: T.partial_title }), h("p", { class: "muted small", text: fmt(T.partial_manual_note, { n: num(q.points) }) })]));
+      parts.push(h("p", { class: "q-hint partial-line", text: fmt(T.partial_line, { n: num(q.points) }) }));
     }
     return h("div", { class: "q-fields" }, parts);
   }
@@ -1187,14 +1281,17 @@
   function renderDraw(q) {
     var linesBox = h("input", { type: "checkbox", onchange: function () { q.options.lines = linesBox.checked; touch(q); } });
     linesBox.checked = q.options.lines !== false;
-    var hSel = h("select", { onchange: function () { q.options.height = parseInt(hSel.value, 10); touch(q); } });
-    [[260, "S"], [380, "M"], [560, "L"], [800, "XL"]].forEach(function (o) {
-      var opt = h("option", { value: String(o[0]), text: T.draw_height + ": " + o[1] });
-      if (q.options.height === o[0]) opt.selected = true;
-      hSel.appendChild(opt);
+    var sizes = [[260, T.draw_small], [380, T.draw_medium], [560, T.draw_large]];
+    var cur = q.options.height || 380;
+    if (sizes.every(function (z) { return z[0] !== cur; })) sizes.push([cur, T.draw_xl]);  /* keep an older custom size */
+    var hSeg = h("div", { class: "seg size-seg", role: "radiogroup", "aria-label": T.draw_height });
+    sizes.forEach(function (z) {
+      hSeg.appendChild(h("button", { type: "button", class: cur === z[0] ? "on" : "", role: "radio", "aria-checked": cur === z[0] ? "true" : "false", text: z[1],
+        onclick: function () { q.options.height = z[0]; touch(q); render(); } }));
     });
     return h("div", { class: "q-fields" }, [
-      h("div", { class: "q-row" }, [h("label", { class: "check", style: "margin:0" }, [linesBox, h("span", { text: T.draw_lines })]), hSel]),
+      h("div", { class: "q-row" }, [h("span", { class: "gm-label", text: T.draw_height }), hSeg, h("span", { class: "spacer" }),
+        h("label", { class: "check", style: "margin:0" }, [linesBox, h("span", { text: T.draw_lines })])]),
       h("p", { class: "q-hint", text: T.draw_note })]);
   }
 
@@ -1226,7 +1323,47 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") { closePicker(); closePop(); } });
 
   /* ================= list ================= */
+  /* keep a card where it is on screen while the cards above it open or close */
+  function keepPlace(card, fn) {
+    var before = card ? card.getBoundingClientRect().top : null;
+    var index = card ? parseInt(card.getAttribute("data-index"), 10) : -1;
+    fn();
+    var after = list.querySelectorAll(".qcard")[index];
+    if (before !== null && after) {
+      var top = after.getBoundingClientRect().top;
+      var min = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+      if (top !== before) window.scrollBy(0, top - Math.max(before, min));
+    }
+  }
+  /* only one question is open at a time */
+  function openCard(index) {
+    var card = list.querySelectorAll(".qcard")[index];
+    keepPlace(card, function () {
+      if (index !== activeIndex) leave(questions[activeIndex]);
+      activeIndex = index;
+      questions[index]._collapsed = false;
+      pendingFocus = { q: questions[index], keep: true };
+      render();
+    });
+  }
+  function grow(el) {
+    if (!el || el.hidden || !el.isConnected) return;
+    el.style.height = "auto";
+    el.style.height = (el.scrollHeight + 2) + "px";
+  }
+  list.addEventListener("input", function (e) { if (e.target.tagName === "TEXTAREA") grow(e.target); });
+  window.addEventListener("resize", function () { Array.prototype.forEach.call(list.querySelectorAll("textarea"), grow); });
+
   function render() {
+    if (pendingFocus) {
+      var want = questions.indexOf(pendingFocus.q);
+      if (want >= 0) {
+        if (want !== activeIndex && questions[activeIndex] && questions[activeIndex] !== pendingFocus.q) leave(questions[activeIndex]);
+        activeIndex = want;
+        pendingFocus.q._collapsed = false;
+      }
+    }
+    questions.forEach(function (q, i) { if (i !== activeIndex) q._collapsed = true; });
     list.textContent = "";
     floatBtn.hidden = true;
     if (!questions.length) list.appendChild(h("div", { class: "q-empty", text: T.no_questions }));
@@ -1240,6 +1377,7 @@
       }
     });
     updateSummary();
+    Array.prototype.forEach.call(list.querySelectorAll("textarea"), grow);
     var cards = list.querySelectorAll(".qcard");
     if (pendingFocus) {
       var idx = questions.indexOf(pendingFocus.q);
@@ -1257,7 +1395,7 @@
   }
 
   function markActive() {
-    Array.prototype.forEach.call(list.querySelectorAll(".qcard"), function (el, i) { el.classList.toggle("focus", i === activeIndex); });
+    Array.prototype.forEach.call(list.querySelectorAll(".qcard"), function (el, i) { el.classList.toggle("focus", i === activeIndex && !questions[i]._collapsed); });
   }
 
   function updateSummary() {
@@ -1276,6 +1414,7 @@
     var i = questions.findIndex(function (q) { return shownIssue(q); });
     if (i < 0) return;
     tabTo("questions");
+    if (i !== activeIndex) leave(questions[activeIndex]);
     questions[i]._collapsed = false;
     activeIndex = i;
     render();
@@ -1287,7 +1426,7 @@
     var card = event.target.closest(".qcard");
     if (!card) return;
     var i = parseInt(card.getAttribute("data-index"), 10);
-    if (!isNaN(i) && i !== activeIndex) { leave(questions[activeIndex]); activeIndex = i; markActive(); renderPreview(); }
+    if (!isNaN(i) && i !== activeIndex && !questions[i]._collapsed) { leave(questions[activeIndex]); activeIndex = i; markActive(); renderPreview(); }
   });
   /* leaving the question list altogether (settings, preview, toolbar…) also counts as leaving */
   document.addEventListener("focusin", function (event) {
@@ -1307,6 +1446,8 @@
     var q = questions[activeIndex] || questions[0];
     var frame = $("preview-frame");
     if (frame) frame.className = "pv-frame " + device;
+    var tb = $("btn-try");
+    if (tb) tb.hidden = !q || q.type === "section" || TRY_TYPES.indexOf(q.type) === -1 || !!q.manual_grade;
     if (!q) { preview.innerHTML = '<p class="muted">' + esc(T.no_questions) + "</p>"; return; }
     var scored = questions.filter(function (x) { return x.type !== "section"; });
     var pos = scored.indexOf(q) + 1;
@@ -1359,7 +1500,14 @@
     var o = p.options;
     var imgs = (p.extra && p.extra.option_images) || [];
     if (q.type === "mcq" || q.type === "checkbox") {
-      return (o || []).map(function (opt, i) {
+      /* every option row of the editor, empty ones as faded placeholders; i = its place among the saved options */
+      var i = -1;
+      return q.options.map(function (raw, n) {
+        if (!String(raw).trim() && !imgAt(q, "option_images", n)) {
+          return '<div class="pv-opt ghost"' + d + '><span class="pv-mark' + (q.type === "checkbox" ? " sq" : "") + '"></span><span>' + esc(fmt(T.option_n, { n: n + 1 })) + "</span></div>";
+        }
+        i += 1;
+        var opt = (o || [])[i];
         var on = q.type === "checkbox" ? (Array.isArray(v) && v.indexOf(i) !== -1) : v === i;
         return '<label class="pv-opt pick"' + d + '><input type="' + (q.type === "checkbox" ? "checkbox" : "radio") + '" name="pv-choice" data-k="choice" value="' + i + '"' + (on ? " checked" : "") + ">" +
           "<span>" + rich(shown(opt)) + "</span>" + (imgs[i] ? '<img src="' + esc(media(imgs[i])) + '" alt="">' : "") + "</label>";
@@ -1528,8 +1676,8 @@
     if (CHOICE.indexOf(q.type) !== -1) {
       if (q.type === "dropdown") return '<div class="pv-select"' + d + ">" + esc(T.choose) + " ▾</div>";
       return (o || []).map(function (opt, i) {
-        if (!String(opt).trim() && !imgAt(q, "option_images", i)) return "";
         var img = imgAt(q, "option_images", i);
+        if (!String(opt).trim() && !img) return '<div class="pv-opt ghost"' + d + '><span class="pv-mark' + (q.type === "checkbox" ? " sq" : "") + '"></span><span>' + esc(fmt(T.option_n, { n: i + 1 })) + "</span></div>";
         return '<div class="pv-opt"' + d + '><span class="pv-mark' + (q.type === "checkbox" ? " sq" : "") + '"></span><span>' + rich(shown(opt)) + "</span>" +
           (img ? '<img src="' + esc(media(img)) + '" alt="">' : "") + "</div>";
       }).join("");
@@ -1779,9 +1927,10 @@
         target.classList.remove("drop-target");
         var to = parseInt(target.getAttribute("data-index"), 10);
         if (!isNaN(to) && to !== fromIndex) {
+          var open = questions[activeIndex];
           var item = questions.splice(fromIndex, 1)[0];
           questions.splice(to, 0, item);
-          activeIndex = to;
+          activeIndex = Math.max(0, questions.indexOf(open));
           touch(); render();
         }
       }
@@ -1794,9 +1943,10 @@
   function move(index, delta) {
     var to = index + delta;
     if (to < 0 || to >= questions.length) return;
+    var open = questions[activeIndex];
     var item = questions.splice(index, 1)[0];
     questions.splice(to, 0, item);
-    activeIndex = to;
+    activeIndex = Math.max(0, questions.indexOf(open));
     touch(); render();
     var cards = list.querySelectorAll(".qcard");
     if (cards[to]) cards[to].scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1810,8 +1960,10 @@
   }
   function remove(index) {
     if (!window.confirm(T.confirm_delete_question)) return;
+    var open = questions[activeIndex];
     questions.splice(index, 1);
-    activeIndex = Math.max(0, Math.min(activeIndex, questions.length - 1));
+    activeIndex = questions.indexOf(open);
+    if (activeIndex < 0) { activeIndex = Math.max(0, Math.min(index, questions.length - 1)); if (questions[activeIndex]) questions[activeIndex]._collapsed = true; }
     touch(); render();
   }
 
@@ -1847,8 +1999,8 @@
   });
   NUMS.forEach(function (key) {
     var el = $("s-" + key);
-    el.value = settings[key] === null || settings[key] === undefined ? "" : settings[key];
-    el.addEventListener("input", function () { settings[key] = el.value === "" ? 0 : parseInt(el.value, 10) || 0; touch(); });
+    setNumInput(el, settings[key]);
+    el.addEventListener("input", function () { settings[key] = el.value.trim() === "" ? 0 : parseInt(latin(el.value), 10) || 0; touch(); });
   });
   TEXTS.forEach(function (key) {
     var el = $("s-" + key);
@@ -1881,7 +2033,6 @@
     });
   });
   $("btn-collapse").addEventListener("click", function () { questions.forEach(function (q) { q._collapsed = true; }); render(); });
-  $("btn-expand").addEventListener("click", function () { questions.forEach(function (q) { q._collapsed = false; }); render(); });
 
   Array.prototype.forEach.call(document.querySelectorAll("[data-tab]"), function (tab) {
     tab.addEventListener("click", function () {
@@ -1910,6 +2061,7 @@
         var extra = {};
         if (q.extra.dir) extra.dir = q.extra.dir;
         if (q.extra.attachment) extra.attachment = q.extra.attachment;
+        if (q.type === "checkbox" && q.partial && q.extra.cb_deduct === false) extra.cb_deduct = false;
         var out = { id: q.id, type: q.type, text: q.text, description: q.description, image: q.image || "", audio: q.audio || "", points: q.points,
           required: !!q.required, explanation: q.explanation, partial: !!q.partial, manual_grade: !!q.manual_grade,
           options: q.options, correct: q.correct, extra: extra };
@@ -1971,18 +2123,6 @@
       });
     }
     if (revision === savedRevision && !force && questions.every(function (q) { return q.id; })) return Promise.resolve(true);
-    var blocked = questions.filter(function (q) { return blockingIssue(q); });
-    if (blocked.length) {
-      /* an unfinished question would be refused: wait quietly, keep a copy on this device */
-      keepDraft();
-      if (force) {
-        blocked.forEach(function (q) { delete q._fresh; refreshCardState(q); });
-        updateSummary();
-        toast(fmt(blocked.length === 1 ? T.n_incomplete_one : T.n_incomplete, { n: blocked.length }));
-      }
-      setSaveState("waiting");
-      return Promise.resolve(false);
-    }
     saving = true;
     var startRevision = revision;
     setSaveState("saving");
@@ -1990,8 +2130,7 @@
       saving = false;
       if (!res.ok) {
         if (!res.status || res.status >= 500) return offline();
-        setSaveState("error", res.error);
-        if (force && res.error) toast(res.error);
+        setSaveState("error");
         if (typeof res.index === "number" && questions[res.index]) markError(questions[res.index], res.error);
         return false;
       }
@@ -2032,6 +2171,16 @@
       var form = button.closest("form");
       if (!form) return;
       event.preventDefault();
+      var publishing = !!form.querySelector('input[name="status"][value="published"]');
+      if (publishing) {
+        var bad = questions.filter(function (q) { return issueOf(q); });
+        if (bad.length) {
+          bad.forEach(function (q) { delete q._fresh; refreshCardState(q); });
+          updateSummary();
+          toast(T.publish_blocked);
+          return;
+        }
+      }
       save(true).then(function (ok) { if (ok) form.submit(); });
     });
   });
@@ -2043,18 +2192,27 @@
   });
 
   /* keep content clear of the sticky top bar */
+  var barEl = document.querySelector(".builder-bar"), stuck = false, fullH = 0;
   function fitOffsets() {
-    var bar = document.querySelector(".builder-bar");
     var head = document.querySelector(".site-header, header.topbar, body > header");
-    var top = (head ? head.offsetHeight : 66) + (bar ? bar.offsetHeight : 0) + 16;
+    var headH = head ? head.offsetHeight : 64;
+    var sticky = barEl && getComputedStyle(barEl).position === "sticky";
+    if (barEl) barEl.style.top = headH + "px";
+    var top = headH + (barEl && sticky ? barEl.offsetHeight : 0) + 12;
     document.documentElement.style.scrollPaddingTop = top + "px";
     document.documentElement.style.setProperty("--builder-top", top + "px");
   }
-  window.addEventListener("resize", fitOffsets);
-  var barEl = document.querySelector(".builder-bar"), stuck = false;
+  window.addEventListener("resize", function () { if (!stuck && barEl) fullH = barEl.offsetHeight; fitOffsets(); });
   window.addEventListener("scroll", function () {
-    var want = stuck ? window.scrollY > 40 : window.scrollY > 150;  /* hysteresis: no flicker */
-    if (want !== stuck && barEl) { stuck = want; barEl.classList.toggle("stuck", stuck); fitOffsets(); }
+    if (!barEl) return;
+    var want = stuck ? window.scrollY > 40 : window.scrollY > 120;  /* hysteresis: no flicker */
+    if (want === stuck) return;
+    if (want) fullH = barEl.offsetHeight;
+    stuck = want;
+    barEl.classList.toggle("stuck", stuck);
+    /* the compact bar is shorter: keep that space below it so the page does not jump */
+    barEl.style.marginBlockEnd = stuck ? Math.max(0, fullH - barEl.offsetHeight) + "px" : "";
+    fitOffsets();
   }, { passive: true });
   setTimeout(fitOffsets, 50);
 
@@ -2066,11 +2224,11 @@
     if (!window.confirm(T.draft_restore)) { dropDraft(); return; }
     var p = raw.payload;
     Object.assign(settings, p.settings || {});
-    questions = (p.questions || []).map(function (q) { q.extra = q.extra || {}; return q; });
+    questions = (p.questions || []).map(padEmpty);
     revision = 1;
     setTimeout(function () { save(true); }, 300);
   })();
-  if (questions.length > 12) questions.forEach(function (q, i) { q._collapsed = i > 0; });
+  questions.forEach(function (q, i) { q._collapsed = i > 0; });
   render();
   if (location.hash === "#settings" || location.hash === "#share") tabTo(location.hash.slice(1));
   setSaveState(revision ? "saving" : "saved");

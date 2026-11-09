@@ -50,7 +50,7 @@ from .grading import (
 )
 from .i18n import current_lang, t
 from .settings import flag
-from .utils import fmt_num, gen_code, jd, jl, login_required, now, pct
+from .utils import fmt_num, gen_code, jd, jl, latin_digits, login_required, now, pct
 
 bp = Blueprint("teacher", __name__, url_prefix="/teacher")
 
@@ -202,7 +202,7 @@ def new_form():
 def edit_form(fid):
     form = own_form(fid)
     db = get_db()
-    questions = load_questions(db, fid)
+    questions = load_questions(db, fid, include_incomplete=True)
     payload_questions = [
         {
             "id": q["id"],
@@ -260,6 +260,11 @@ def edit_form(fid):
         "ai_distractors",
         "ai_failed",
         "ai_none_new",
+        "warn_pick_correct_multi",
+        "publish_blocked",
+        "explanation_btn", "explanation_ph", "cb_deduct", "cb_calc_all", "cb_calc_partial", "cb_calc_deduct", "cb_calc_no_deduct",
+        "cb_calc_none", "match_wrong_add", "match_wrong_ph", "match_hint_one", "draw_small", "draw_medium", "draw_large", "draw_xl",
+        "partial_line", "sec_reading_ph", "option_n",
         "n_incomplete_one",
         "n_incomplete",
         "waiting_complete",
@@ -616,13 +621,34 @@ def _str_list(values, limit=60, size=300):
     return [str(v).strip()[:size] for v in values if str(v).strip()][:limit]
 
 
-def clean_question(raw):
+def incomplete_questions(questions):
+    """Questions that are not ready for students: unfinished, or auto-graded without a correct answer."""
+    return [
+        q for q in questions
+        if q["type"] != "section" and ((q.get("extra") or {}).get("incomplete")
+                                       or (q["type"] in AUTO and not q.get("manual_grade") and not has_key(q)))
+    ]
+
+
+def clean_question(raw, draft=False):
+    """Validate a question from the builder.
+
+    draft=True (autosave) keeps an unfinished question instead of refusing it: whatever is usable is stored
+    and extra.incomplete holds the reason. Unfinished questions are hidden from students and block publishing.
+    """
+    problems = []
+
+    def fail(message):
+        if not draft:
+            raise ValueError(message)
+        problems.append(message)
+
     kind = raw.get("type")
     if kind not in TYPES:
         raise ValueError(t("err_bad_type"))
     text = (raw.get("text") or "").strip()
     if not text and kind != "section":
-        raise ValueError(t("err_question_text"))
+        fail(t("err_question_text"))
     try:
         points = float(raw.get("points", 1))
     except (TypeError, ValueError):
@@ -647,8 +673,10 @@ def clean_question(raw):
     options = raw.get("options")
     if kind in CHOICE_TYPES:
         opts = [str(o).strip()[:300] for o in (options or [])] if isinstance(options, list) else []
+        if draft:
+            opts = [o for o in opts if o][:30]
         if len(opts) < 2 or len(opts) > 30 or any(not o for o in opts):
-            raise ValueError(t("err_options"))
+            fail(t("err_options"))
         out["options"] = opts
         if kind == "checkbox":
             if isinstance(correct, list):
@@ -662,7 +690,7 @@ def clean_question(raw):
         answers = _str_list(correct, 30, 500)
         out["correct"] = answers or None
         if kind == "order" and not answers:
-            raise ValueError(t("err_order_answer"))
+            fail(t("err_order_answer"))
     elif kind == "number":
         if isinstance(correct, dict) and correct.get("value") not in (None, ""):
             try:
@@ -671,7 +699,7 @@ def clean_question(raw):
                     "tolerance": abs(float(correct.get("tolerance") or 0)),
                 }
             except (TypeError, ValueError):
-                raise ValueError(t("err_number"))
+                fail(t("err_number"))
     elif kind == "draw":
         raw_opts = options if isinstance(options, dict) else {}
         out["options"] = {"lines": bool(raw_opts.get("lines", True)), "height": _int(raw_opts.get("height"), 200, 900, 380)}
@@ -692,7 +720,7 @@ def clean_question(raw):
                 if left and right:
                     pairs.append([left, right])
         if len(pairs) < 1:
-            raise ValueError(t("err_match_pairs"))
+            fail(t("err_match_pairs"))
         out["options"] = {"pairs": pairs[:40], "distractors": _str_list(raw_opts.get("distractors"), 20)}
     elif kind == "fill":
         raw_opts = options if isinstance(options, dict) else {}
@@ -706,7 +734,7 @@ def clean_question(raw):
 
         blanks = fill_blanks({"options": out["options"]})
         if not BLANK_RE.search(template):
-            raise ValueError(t("err_fill_blanks"))
+            fail(t("err_fill_blanks"))
         weights = raw_opts.get("blank_points")
         if not out["manual_grade"] and isinstance(weights, list) and len(weights) == len(blanks):
             try:
@@ -717,6 +745,8 @@ def clean_question(raw):
                 out["options"]["blank_points"] = weights
                 out["points"] = round(sum(weights), 2)  # question mark = sum of the blanks
     out["extra"] = _clean_extra(raw.get("extra"), kind, out)
+    if problems:
+        out["extra"] = dict(out["extra"] or {}, incomplete=problems[0])
     return out
 
 
@@ -738,6 +768,8 @@ def _clean_extra(raw, kind, out):
         cleaned += [""] * (size - len(cleaned))
         return cleaned if any(cleaned) else None
 
+    if kind == "checkbox" and raw.get("cb_deduct") is False:
+        extra["cb_deduct"] = False  # partial marks without taking marks away for wrong ticks
     if kind in ("mcq", "checkbox") and isinstance(out.get("options"), list):
         imgs = images(raw.get("option_images"), len(out["options"]))
         if imgs:
@@ -807,7 +839,7 @@ def api_save(fid):
     cleaned = []
     for index, raw in enumerate(raw_questions):
         try:
-            cleaned.append(clean_question(raw if isinstance(raw, dict) else {}))
+            cleaned.append(clean_question(raw if isinstance(raw, dict) else {}, draft=True))
         except ValueError as exc:
             # number questions the way the teacher sees them: titles / reading texts are not counted
             number = sum(1 for r in raw_questions[: index + 1] if isinstance(r, dict) and r.get("type") != "section")
@@ -880,6 +912,10 @@ def set_status(fid):
         count = db.execute("SELECT COUNT(*) c FROM questions WHERE form_id=?", (fid,)).fetchone()["c"]
         if count == 0:
             flash(t("err_publish_empty"), "error")
+            return redirect(url_for("teacher.edit_form", fid=fid))
+        unfinished = incomplete_questions(load_questions(db, fid, include_incomplete=True))
+        if unfinished:
+            flash(t("err_publish_incomplete", n=len(unfinished)), "error")
             return redirect(url_for("teacher.edit_form", fid=fid))
     db.execute("UPDATE forms SET status=?, updated_at=? WHERE id=?", (status, now(), fid))
     db.commit()
@@ -1188,7 +1224,7 @@ def grade_attempt(aid):
             for i in range(count):
                 cell = (request.form.get(f"blank_{q['id']}_{i}") or "").strip()
                 try:
-                    marks.append(max(0.0, round(float(cell.replace(",", ".")), 2)) if cell != "" else None)
+                    marks.append(max(0.0, round(float(latin_digits(cell)), 2)) if cell != "" else None)
                 except ValueError:
                     marks.append(None)
             if any(m is not None for m in marks):
@@ -1197,7 +1233,7 @@ def grade_attempt(aid):
                     raw = str(min(maximum, sum(marks)))
         if maximum > 0 and raw != "":
             try:
-                value = max(0.0, min(maximum, round(float(raw.replace(",", ".")), 2)))
+                value = max(0.0, min(maximum, round(float(latin_digits(raw)), 2)))
             except ValueError:
                 value = None
             if value is not None and (is_manual(q) or row["points"] is None or abs(value - row["points"]) > 1e-9):
