@@ -92,8 +92,12 @@ def gen_password(length=6):
     return "".join(secrets.choice("abcdefghjkmnpqrstuvwxyz23456789") for _ in range(length))
 
 
+_DIGITS_IN = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
 def clean_username(value):
-    return " ".join(str(value or "").split())[:80]
+    # usernames are stored with 0-9 digits; phones with an Arabic keyboard may type ٠-٩
+    return " ".join(str(value or "").translate(_DIGITS_IN).split())[:80]
 
 
 _AR_ONES = ["صفر", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة", "عشرة",

@@ -12,6 +12,7 @@
         <span id="status-badge">{{ form_status(form.status) }}</span>
         <span class="muted small" id="summary"></span>
         <span class="save-state" id="save-state" aria-live="polite"></span>
+        <button type="button" class="issues-link" id="issues-link" hidden></button>
       </div>
     </div>
     <div class="builder-actions">
@@ -74,10 +75,12 @@
     </div>
     </div>
     <aside class="preview-panel card" aria-label="{{ t('live_preview') }}">
-      <div class="pv-head"><b>{{ icon('eye', 16) }} {{ t('live_preview') }}</b>
-        <div class="seg"><button type="button" class="on" data-device="phone">{{ t('device_phone') }}</button><button type="button" data-device="desktop">{{ t('device_desktop') }}</button></div></div>
+      <div class="pv-head"><b>{{ icon('eye', 16) }} {{ t('live_preview') }}</b></div>
+      <div class="pv-tools">
+        <div class="seg"><button type="button" class="on" data-device="phone">{{ t('device_phone') }}</button><button type="button" data-device="desktop">{{ t('device_desktop') }}</button></div>
+        <button type="button" class="btn outline sm try-btn" id="btn-try">▶ {{ t('try_btn') }}</button></div>
       <div id="preview-frame" class="pv-frame phone"><div class="pv-screen" id="preview-body"></div></div>
-      <p class="muted small center">{{ t('preview_live_note') }}</p>
+      <p class="muted small center">{{ t('preview_live_note2') }}</p>
     </aside>
     </div>
   </section>
@@ -227,4 +230,4 @@
 <script id="form-data" type="application/json">{{ form_data | tojson }}</script>
 <script id="i18n-data" type="application/json">{{ i18n | tojson }}</script>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/builder.js') }}?v=5" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/builder.js') }}?v=6" defer></script>{% endblock %}

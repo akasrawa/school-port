@@ -113,7 +113,7 @@
   /* ================= state ================= */
   function touch(q) {
     revision += 1;
-    if (q && q._error) { delete q._error; if (q._errEl) q._errEl.hidden = true; if (q._el) q._el.classList.remove("has-error"); }
+    if (q && q._error) delete q._error;
     if (q) refreshCardState(q);
     setSaveState("saving");
     clearTimeout(saveTimer);
@@ -127,13 +127,14 @@
       saved: ["ok", "cloud", T.saved_ok],
       saving: ["busy", "spin", T.saving_now],
       offline: ["off", "cloudoff", T.offline_retry],
-      error: ["err", "alert", message || T.save_needs_fix],
+      error: ["off", "alert", T.save_needs_fix],
+      waiting: ["busy-idle", "", T.waiting_complete],
       idle: ["", "", ""]
     };
     var m = map[state] || map.idle;
     saveState.className = "save-state " + m[0];
-    saveState.innerHTML = m[1] ? icon(m[1], 14) + "<span></span>" : "";
-    if (m[1]) saveState.querySelector("span").textContent = m[2];
+    saveState.innerHTML = m[2] ? (m[1] ? icon(m[1], 14) : "") + "<span></span>" : "";
+    if (m[2]) saveState.querySelector("span").textContent = m[2];
   }
 
   function newQuestion(type) {
@@ -142,7 +143,7 @@
       id: null, type: type, text: "", description: "", image: "", audio: "", extra: {},
       points: UNSCORED.indexOf(type) !== -1 ? 0 : (type === "match" || type === "fill" ? 2 : 1),
       required: type !== "section", options: null, correct: null, explanation: "", partial: false,
-      manual_grade: manual
+      manual_grade: manual, _fresh: true
     };
     applyTypeDefaults(q);
     if (type === "fill") q.options.bank = !manual;
@@ -215,6 +216,28 @@
     return (CHOICE.indexOf(q.type) !== -1 || q.type === "truefalse") ? T.warn_pick_correct : T.warn_add_answer;
   }
 
+  /* problems that stop the exam from being saved (the server would refuse them) */
+  function blockingIssue(q) {
+    if (q.type === "section") return "";
+    if (!String(q.text || "").trim()) return T.warn_no_text;
+    if (CHOICE.indexOf(q.type) !== -1 && q.options.filter(function (o, i) { return String(o).trim() || imgAt(q, "option_images", i); }).length < 2) return T.warn_two_options;
+    if (q.type === "match" && issueOf(q) === T.warn_add_pair) return T.warn_add_pair;
+    if (q.type === "fill" && !blanksOf(q).length) return T.warn_add_blank;
+    if (q.type === "order" && !(q.correct || []).length) return T.warn_add_answer;
+    return "";
+  }
+  /* the warning is shown only after the teacher has left the question */
+  function shownIssue(q) {
+    if (q._error) return q._error;
+    return q._fresh ? "" : issueOf(q);
+  }
+  function leave(q) {
+    if (!q || !q._fresh) return;
+    delete q._fresh;
+    refreshCardState(q);
+    updateSummary();
+  }
+
   function imgAt(q, key, i) { var a = q.extra && q.extra[key]; return a && a[i] ? a[i] : ""; }
   function setImg(q, key, i, name, size) {
     var a = (q.extra[key] || []).slice(0, size);
@@ -226,12 +249,12 @@
 
   /* ================= card ================= */
   function cardClass(q) {
-    var c = "card qcard t-" + q.type + (q._collapsed ? " collapsed" : "") + (q._error ? " has-error" : "");
+    var c = "card qcard t-" + q.type + (q._collapsed ? " collapsed" : "");
     if (q.type === "section") return c + " section";
     if (GRADED.indexOf(q.type) !== -1 && q.manual_grade) c += " manual no-key";
     else if (MANUAL.indexOf(q.type) !== -1) c += " manual";
     else if (UNSCORED.indexOf(q.type) !== -1) c += " info";
-    if (issueOf(q)) c += " warn";
+    if (shownIssue(q)) c += " warn";
     return c;
   }
 
@@ -242,16 +265,11 @@
     return h("span", { class: "badge " + (manual ? "amber" : "green"), text: manual ? T.grading_manual : T.grading_auto });
   }
 
-  function statusEl(q) {
-    var issue = issueOf(q);
-    if (q.type === "section") return h("span", { class: "q-status" });
-    if (issue) return h("span", { class: "q-status warn", html: icon("alert", 14) + "<span></span>" }, []);
-    return h("span", { class: "q-status ok", title: T.complete, html: icon("check", 15) });
-  }
   function fillStatus(el, q) {
-    var issue = issueOf(q);
-    el.className = "q-status" + (q.type === "section" ? "" : issue ? " warn" : " ok");
-    el.innerHTML = q.type === "section" ? "" : issue ? icon("alert", 14) + "<span></span>" : icon("check", 15);
+    var issue = shownIssue(q);
+    var pending = !issue && q._fresh && issueOf(q);
+    el.className = "q-status" + (q.type === "section" || pending ? "" : issue ? " warn" : " ok");
+    el.innerHTML = q.type === "section" || pending ? "" : issue ? icon("alert", 14) + "<span></span>" : icon("check", 15);
     if (issue) el.querySelector("span").textContent = issue;
   }
 
@@ -314,10 +332,13 @@
       ])
     ]);
 
+    head.addEventListener("click", function (e) {
+      if (e.target.closest("button, select, input, a, .grip, label")) return;
+      q._collapsed = true;
+      render();
+    });
+    head.title = T.click_to_fold;
     var fields = h("div", { class: "q-fields qcard-body" });
-    q._errEl = h("p", { class: "q-error-line", hidden: !q._error, html: icon("alert", 14) + "<span></span>" });
-    q._errEl.lastChild.textContent = q._error || "";
-    fields.appendChild(q._errEl);
     fields.appendChild(textEditor(q));
     if (q.type === "section") {
       var body = h("textarea", { rows: "6", maxlength: "6000", dir: q.extra.dir || "auto", placeholder: T.section_body, "aria-label": T.section_body,
@@ -377,11 +398,6 @@
       var required = h("input", { type: "checkbox", onchange: function () { q.required = required.checked; touch(q); } });
       required.checked = !!q.required;
       row.appendChild(h("label", { class: "check switch", style: "margin:0" }, [required, h("span", { text: T.required })]));
-    }
-    if (q.type === "checkbox") {
-      var partial = h("input", { type: "checkbox", onchange: function () { q.partial = partial.checked; touch(q); } });
-      partial.checked = !!q.partial;
-      row.appendChild(h("label", { class: "check", style: "margin:0" }, [partial, h("span", { text: T.partial_credit })]));
     }
     if (GRADED.indexOf(q.type) !== -1) {
       var modeSel = h("div", { class: "grade-mode", role: "radiogroup", "aria-label": T.grading_mode });
@@ -610,7 +626,7 @@
           q._undoMsg = fmt(T.pasted_n, { n: rows.length });
           touch(q); render();
         } });
-      var mark = manual ? h("span", { class: "opt-bullet", "aria-hidden": "true" }) : pick;
+      var mark = manual ? h("span", { class: "opt-bullet" + (multi ? " sq" : ""), "aria-hidden": "true" }) : pick;
       line.appendChild(mark);
       line.appendChild(input);
       if (checked) line.appendChild(h("span", { class: "correct-tag", text: T.correct_tag }));
@@ -634,6 +650,15 @@
           delete q._undo; touch(q); render();
         } })]));
       setTimeout(function () { if (q._undo) { delete q._undo; } }, 8000);
+    }
+    if (multi && !manual) {
+      var scoring = h("div", { class: "seg wide", role: "radiogroup", "aria-label": T.cb_scoring });
+      [[false, T.cb_all_or_nothing], [true, T.cb_partial]].forEach(function (m) {
+        scoring.appendChild(h("button", { type: "button", class: !!q.partial === m[0] ? "on" : "", text: m[1],
+          onclick: function () { q.partial = m[0]; touch(q); render(); } }));
+      });
+      box.appendChild(h("div", { class: "cb-scoring" }, [h("small", { class: "muted", text: T.cb_scoring }), scoring,
+        h("small", { class: "muted", text: q.partial ? T.cb_partial_note : T.cb_all_note })]));
     }
     var tools = h("div", { class: "opt-tools" }, [chipButton("plus", T.add_option, function () { addOption(q, q.options.length); })]);
     if (q.type !== "dropdown" || true) tools.appendChild(chipButton("spark", T.ai_distractors, function () { suggestDistractors(q, sugBox); }, "ai"));
@@ -1191,6 +1216,7 @@
     placePop(picker, anchor);
   }
   function insertAt(type, at) {
+    leave(questions[activeIndex]);
     var q = newQuestion(type);
     questions.splice(at, 0, q);
     activeIndex = at;
@@ -1237,15 +1263,35 @@
   function updateSummary() {
     var total = questions.reduce(function (sum, q) { return sum + (UNSCORED.indexOf(q.type) === -1 ? (parseFloat(q.points) || 0) : 0); }, 0);
     var count = questions.filter(function (q) { return q.type !== "section"; }).length;
-    var warn = questions.filter(function (q) { return issueOf(q); }).length;
-    summary.textContent = fmt(T.n_questions_short, { n: count }) + " · " + T.total_points + ": " + num(total) + (warn ? " · ⚠ " + warn : "");
+    summary.textContent = fmt(T.n_questions_short, { n: count }) + " · " + T.total_points + ": " + num(total);
+    var link = $("issues-link");
+    var bad = questions.filter(function (q) { return shownIssue(q); });
+    if (link) {
+      link.hidden = !bad.length;
+      link.textContent = "⚠ " + fmt(bad.length === 1 ? T.n_incomplete_one : T.n_incomplete, { n: bad.length });
+    }
   }
+  var issuesLink = $("issues-link");
+  if (issuesLink) issuesLink.addEventListener("click", function () {
+    var i = questions.findIndex(function (q) { return shownIssue(q); });
+    if (i < 0) return;
+    tabTo("questions");
+    questions[i]._collapsed = false;
+    activeIndex = i;
+    render();
+    var card = list.querySelectorAll(".qcard")[i];
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
 
   list.addEventListener("focusin", function (event) {
     var card = event.target.closest(".qcard");
     if (!card) return;
     var i = parseInt(card.getAttribute("data-index"), 10);
-    if (!isNaN(i) && i !== activeIndex) { activeIndex = i; markActive(); renderPreview(); }
+    if (!isNaN(i) && i !== activeIndex) { leave(questions[activeIndex]); activeIndex = i; markActive(); renderPreview(); }
+  });
+  /* leaving the question list altogether (settings, preview, toolbar…) also counts as leaving */
+  document.addEventListener("focusin", function (event) {
+    if (!list.contains(event.target) && !(picker && picker.contains(event.target)) && !(mathPop && mathPop.contains(event.target))) leave(questions[activeIndex]);
   });
 
   /* ================= live preview (as the student sees it) ================= */
@@ -1289,13 +1335,8 @@
       if (q.extra.attachment) out += '<div class="pv-file">' + icon("clip", 14) + " " + esc(q.extra.attachment.label || "") + "</div>";
       var tryable = TRY_TYPES.indexOf(q.type) !== -1;
       out += tryable ? tryBody(q, dir) : previewBody(q, dir);
-      if (tryable) {
-        out += '<div class="pv-try"><button type="button" class="pv-check" data-k="check">' + icon("check", 15) + " " + esc(T.try_check) + "</button>" +
-          '<button type="button" class="link" data-k="clear">' + esc(T.try_clear) + "</button></div>";
-        out += '<div class="pv-result" id="pv-result">' + (q._tryResult || '<span class="muted small">' + esc(T.try_hint) + "</span>") + "</div>";
-      } else if (MANUAL.indexOf(q.type) !== -1) {
-        out += '<div class="pv-result"><span class="muted small">' + esc(T.try_manual) + "</span></div>";
-      }
+      out += '<div class="pv-result" id="pv-result">' + (tryable ? (q._tryResult || "") : "") + "</div>";
+      out += '<div class="pv-next">' + esc(T.next) + "</div>";
     }
     preview.innerHTML = out;
     preview.setAttribute("data-index", String(questions.indexOf(q)));
@@ -1446,8 +1487,19 @@
   function clearResult(q) {
     delete q._tryResult;
     var box = $("pv-result");
-    if (box) box.innerHTML = '<span class="muted small">' + esc(T.try_hint) + "</span>";
+    if (box) box.innerHTML = "";
   }
+  var tryBtn = $("btn-try");
+  if (tryBtn) tryBtn.addEventListener("click", function () {
+    var q = questions[activeIndex];
+    var box = $("pv-result");
+    if (!q || q.type === "section") return;
+    if (TRY_TYPES.indexOf(q.type) === -1 || q.manual_grade) {
+      if (box) box.innerHTML = '<div class="res info">' + esc(UNSCORED.indexOf(q.type) !== -1 ? T.try_not_scored : T.try_manual) + "</div>";
+      return;
+    }
+    checkTry(q);
+  });
   function checkTry(q) {
     var box = $("pv-result");
     if (box) box.innerHTML = '<span class="muted small">' + icon("spin", 14) + " " + esc(T.try_checking) + "</span>";
@@ -1456,7 +1508,7 @@
       if (!r.ok) html = '<div class="res warn">' + icon("alert", 15) + " " + esc(r.error || T.save_failed) + "</div>";
       else if (r.manual) html = '<div class="res info">' + esc(T.try_manual) + "</div>";
       else if (r.nokey) html = '<div class="res warn">' + icon("alert", 15) + " " + esc(T.try_nokey) + "</div>";
-      else if (r.empty) html = '<div class="res info">' + esc(T.try_empty) + "</div>";
+      else if (r.empty) html = '<div class="res info">' + esc(T.try_empty_hint) + "</div>";
       else {
         var full = r.points >= r.max - 1e-9, none = r.points <= 0;
         var cls = full ? "ok" : none ? "bad" : "part";
@@ -1464,6 +1516,7 @@
         html = '<div class="res ' + cls + '"><b>' + (full ? "✓ " : none ? "✗ " : "~ ") + esc(label) + "</b> — " + esc(fmt(T.try_score, { n: num(r.points), m: num(r.max) })) + "</div>";
         if (!full && r.correct) html += '<div class="res-key">' + esc(T.correct_answer) + ": <b>" + esc(shown(r.correct)) + "</b></div>";
       }
+      html += '<button type="button" class="link small" data-k="clear">' + esc(T.try_again) + "</button>";
       q._tryResult = html;
       if (box && currentQ() === q) box.innerHTML = html;
     }).catch(function () { if (box) box.innerHTML = '<span class="muted small">' + esc(T.offline_retry) + "</span>"; });
@@ -1918,6 +1971,18 @@
       });
     }
     if (revision === savedRevision && !force && questions.every(function (q) { return q.id; })) return Promise.resolve(true);
+    var blocked = questions.filter(function (q) { return blockingIssue(q); });
+    if (blocked.length) {
+      /* an unfinished question would be refused: wait quietly, keep a copy on this device */
+      keepDraft();
+      if (force) {
+        blocked.forEach(function (q) { delete q._fresh; refreshCardState(q); });
+        updateSummary();
+        toast(fmt(blocked.length === 1 ? T.n_incomplete_one : T.n_incomplete, { n: blocked.length }));
+      }
+      setSaveState("waiting");
+      return Promise.resolve(false);
+    }
     saving = true;
     var startRevision = revision;
     setSaveState("saving");
@@ -1943,9 +2008,10 @@
   /* show the problem on the question itself, without moving the page */
   function markError(q, message) {
     questions.forEach(function (x) { if (x !== q) delete x._error; });
-    q._error = message || T.save_needs_fix;
-    if (q._errEl) { q._errEl.hidden = false; q._errEl.lastChild.textContent = q._error; }
-    if (q._el) q._el.classList.add("has-error");
+    q._error = String(message || T.save_needs_fix).replace(/^[^:：]*[:：]\s*/, "");
+    delete q._fresh;
+    refreshCardState(q);
+    updateSummary();
   }
 
   function offline() {
@@ -1985,6 +2051,11 @@
     document.documentElement.style.setProperty("--builder-top", top + "px");
   }
   window.addEventListener("resize", fitOffsets);
+  var barEl = document.querySelector(".builder-bar"), stuck = false;
+  window.addEventListener("scroll", function () {
+    var want = stuck ? window.scrollY > 40 : window.scrollY > 150;  /* hysteresis: no flicker */
+    if (want !== stuck && barEl) { stuck = want; barEl.classList.toggle("stuck", stuck); fitOffsets(); }
+  }, { passive: true });
   setTimeout(fitOffsets, 50);
 
   /* ================= init ================= */
