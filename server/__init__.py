@@ -16,6 +16,7 @@ from .utils import fmt_num, jl, pct, safe_next
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+APP_VERSION = "2.9.3"  # shown in the footer: tells at a glance which version is deployed
 SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("SERVERLESS"))
 
 
@@ -207,6 +208,7 @@ def create_app():
         lang = current_lang()
         return {
             "t": t,
+            "app_version": APP_VERSION,
             "lang": lang,
             "dir": "rtl" if lang == "ar" else "ltr",
             "csrf_token": csrf_token,

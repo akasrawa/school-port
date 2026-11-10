@@ -495,3 +495,26 @@ input[data-num] { font-variant-numeric: tabular-nums; }
 .blank-dirs { display: flex; flex-wrap: wrap; gap: 8px; }
 .blank-dir-item { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #E2E8F0; border-radius: 10px; padding: 4px 6px; }
 .fill-chip[dir="ltr"] .fc-label { unicode-bidi: isolate; }
+
+/* v2.9.3: statement rows – everything on one line, coloured choices, delete beside the row */
+.builder .qcard .tfm-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; border: 1px solid #E2E8F0; border-inline-start-width: 4px; border-radius: 12px; padding: 4px 8px; background: #fff; transition: background .15s, border-color .15s; }
+.builder .qcard .tfm-row.has-true { border-color: #86EFAC; border-inline-start-color: #16A34A; background: #F0FDF4; }
+.builder .qcard .tfm-row.has-false { border-color: #FCA5A5; border-inline-start-color: #DC2626; background: #FEF2F2; }
+.builder .qcard .tfm-pick { width: 38px; height: 38px; border-radius: 10px; font-size: 1.15rem; font-weight: 800; display: grid; place-items: center; cursor: pointer; transition: .12s; }
+.builder .qcard .tfm-pick.yes { color: #16A34A; background: #F0FDF4; border: 1.5px solid #BBF7D0; }
+.builder .qcard .tfm-pick.no { color: #DC2626; background: #FEF2F2; border: 1.5px solid #FECACA; }
+.builder .qcard .tfm-pick.yes:hover { border-color: #16A34A; }
+.builder .qcard .tfm-pick.no:hover { border-color: #DC2626; }
+.builder .qcard .tfm-pick.yes.on { background: #16A34A; border-color: #16A34A; color: #fff; box-shadow: 0 2px 8px rgba(22, 163, 74, .35); }
+.builder .qcard .tfm-pick.no.on { background: #DC2626; border-color: #DC2626; color: #fff; box-shadow: 0 2px 8px rgba(220, 38, 38, .35); }
+.builder .qcard .tfm-row.has-true .tfm-pick.no, .builder .qcard .tfm-row.has-false .tfm-pick.yes { opacity: .55; }
+.tfm-del { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; border: 1px solid #FECACA; background: #FEF2F2; color: #DC2626; cursor: pointer; transition: .12s; }
+.tfm-del:hover:not(:disabled) { background: #DC2626; border-color: #DC2626; color: #fff; }
+.tfm-del:disabled { opacity: .35; cursor: not-allowed; }
+@media (max-width: 640px) { .builder .qcard .tfm-row { flex-wrap: wrap; } }
+/* student page: the two choices are coloured before and after picking */
+.tf-pick.yes span { color: #16A34A; border-color: #BBF7D0; background: #F0FDF4; }
+.tf-pick.no span { color: #DC2626; border-color: #FECACA; background: #FEF2F2; }
+.tf-item:has(.yes input:checked) { border-color: #86EFAC; background: #F0FDF4; }
+.tf-item:has(.no input:checked) { border-color: #FCA5A5; background: #FEF2F2; }
+.app-ver { opacity: .55; font-size: .8em; margin-inline-start: .4rem; }

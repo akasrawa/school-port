@@ -868,11 +868,13 @@
           h("button", { type: "button", html: icon("plus", 12), title: "+", onclick: function () {
             o.item_points[i] = num((parseFloat(o.item_points[i]) || 0) + 0.5); tfSync(q); touch(q); render(); } })]));
       }
-      row.appendChild(iconButton("x", T.remove, function () {
-        if (o.items.length <= 1) return;
-        o.items.splice(i, 1); o.item_points.splice(i, 1); if (Array.isArray(q.correct)) q.correct.splice(i, 1);
-        touch(q); render();
-      }, { danger: true, disabled: o.items.length <= 1, extraClass: "ghosty" }));
+      row.appendChild(h("button", { type: "button", class: "tfm-del", title: T.remove, "aria-label": T.remove + " " + (i + 1),
+        disabled: o.items.length <= 1, html: icon("trash", 16),
+        onclick: function () {
+          if (o.items.length <= 1) return;
+          o.items.splice(i, 1); o.item_points.splice(i, 1); if (Array.isArray(q.correct)) q.correct.splice(i, 1);
+          touch(q); render();
+        } }));
       list.appendChild(row);
     });
     var parts = [h("div", { class: "opt-head" }, [h("b", { text: T.tf_statements }), manual ? null : h("small", { class: "muted", text: T.tf_total_auto })]), list,
