@@ -21,6 +21,7 @@ from flask import (
 from .access import allowed_attempts, is_admin
 from .db import get_db
 from .grading import (
+    fill_dir,
     INFO,
     eff_points,
     fill_bank,
@@ -473,7 +474,7 @@ def take(aid):
             q["chunks"] = [c[1] for c in chunks]
             q["dir"] = "rtl" if re.search("[\u0600-\u06FF]", " ".join(q["chunks"])) else "ltr"
         if q["type"] == "fill":
-            q["dir"] = "rtl" if re.search("[\u0600-\u06FF]", (q["options"] or {}).get("template", "")) else "ltr"
+            q["dir"] = fill_dir(q)
         if (q.get("extra") or {}).get("dir") in ("rtl", "ltr"):  # direction chosen by the teacher
             q["dir"] = q["extra"]["dir"]
     config = {

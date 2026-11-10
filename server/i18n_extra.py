@@ -622,4 +622,5 @@ EXTRA = {
     "blank_dir_ar": ('Arabic ←', 'عربي ←'),
     "blank_dir_en": ('English →', 'English →'),
     "blank_dir_num": ('Number 123', 'رقم ١٢٣'),
+    "sentence_dir": ('Sentence direction', 'اتجاه الجملة'),
 }

@@ -83,6 +83,38 @@ def tf_weights(q, count):
 BLANK_DIRS = ("ltr", "rtl", "num")
 
 
+_AR = re.compile("[\u0600-\u06FF]")
+_LAT = re.compile("[A-Za-z]")
+
+
+def text_dir(text):
+    """rtl / ltr from the first letter of the text; "" when it holds only numbers and symbols."""
+    for ch in str(text or ""):
+        if _AR.match(ch):
+            return "rtl"
+        if _LAT.match(ch):
+            return "ltr"
+    return ""
+
+
+def fill_dir(q):
+    """Direction of a fill-in sentence: the teacher's choice, else its words, else the question text
+    (a list such as "1- [ ]  2- [ ]" has no words and follows the Arabic question), else the interface."""
+    chosen = (q.get("extra") or {}).get("dir")
+    if chosen in ("rtl", "ltr"):
+        return chosen
+    template = (q.get("options") or {}).get("template", "") if isinstance(q.get("options"), dict) else ""
+    words = BLANK_RE.sub(" ", template)
+    found = text_dir(words) or text_dir(q.get("text"))
+    if found:
+        return found
+    try:
+        from .i18n import current_lang
+        return "rtl" if current_lang() == "ar" else "ltr"
+    except RuntimeError:
+        return "rtl"
+
+
 def fill_parts(q):
     """Template split into text and blank pieces for rendering."""
     template = (q.get("options") or {}).get("template", "") if isinstance(q.get("options"), dict) else ""

@@ -518,3 +518,5 @@ input[data-num] { font-variant-numeric: tabular-nums; }
 .tf-item:has(.yes input:checked) { border-color: #86EFAC; background: #F0FDF4; }
 .tf-item:has(.no input:checked) { border-color: #FCA5A5; background: #FEF2F2; }
 .app-ver { opacity: .55; font-size: .8em; margin-inline-start: .4rem; }
+.fill-bar .dir-seg button { padding: 0.2rem 0.6rem; font-size: 0.78rem; }
+.fill-bar .dir-seg button.on { background: var(--blue); }

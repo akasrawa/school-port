@@ -73,7 +73,7 @@
               <span class="mr-given {{ 'empty' if not r.answered }}">{% if r.given_img %}<img src="{{ media_url(r.given_img) }}" alt="">{% endif %}{{ r.given or '—' }}</span></div>
           {% endfor %}</div>
         {% elif q.type == 'fill' %}
-          <div class="fill-line" dir="{{ qd }}">{% for p in fill_parts(q) %}{% if p.blank is defined %}{% set given = it.value[p.blank] if it.value and p.blank < it.value|length else '' %}<span class="fill-blank {{ 'empty' if not given }}"{% if p.dir %} dir="{{ 'rtl' if p.dir == 'rtl' else 'ltr' }}"{% endif %}>{{ given or '…' }}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
+          <div class="fill-line" dir="{{ fill_dir(q) }}">{% for p in fill_parts(q) %}{% if p.blank is defined %}{% set given = it.value[p.blank] if it.value and p.blank < it.value|length else '' %}<span class="fill-blank {{ 'empty' if not given }}"{% if p.dir %} dir="{{ 'rtl' if p.dir == 'rtl' else 'ltr' }}"{% endif %}>{{ given or '…' }}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
         {% else %}
           {% set txt = answer_text(q, it.value) %}
           {% set pics = answer_images(q, it.value) %}

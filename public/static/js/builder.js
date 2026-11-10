@@ -1119,13 +1119,33 @@
     if (d === "num") input.setAttribute("inputmode", "decimal"); else input.removeAttribute("inputmode");
   }
 
+  /* direction of the fill-in sentence: the teacher's choice, else its words, else the question text
+     ("1- [ ]  2- [ ]" has no words and follows the Arabic question), else the interface language */
+  function textDir(t) {
+    var m = String(t || "").match(/[A-Za-z\u0600-\u06FF]/);
+    return m ? (/[A-Za-z]/.test(m[0]) ? "ltr" : "rtl") : "";
+  }
+  function fillDir(q) {
+    if (q.extra.dir === "rtl" || q.extra.dir === "ltr") return q.extra.dir;
+    var words = String((q.options && q.options.template) || "").replace(BLANK_RE, " ");
+    return textDir(words) || textDir(q.text) || (document.documentElement.lang.slice(0, 2) === "ar" ? "rtl" : "ltr");
+  }
+
   function renderFill(q) {
     var o = q.options;
     var manual = !!q.manual_grade;
-    var ed = h("div", { class: "fill-ed" + (manual ? " manual" : ""), contenteditable: "true", dir: q.extra.dir || "auto", spellcheck: "false",
+    var ed = h("div", { class: "fill-ed" + (manual ? " manual" : ""), contenteditable: "true", dir: fillDir(q), spellcheck: "false",
       role: "textbox", "aria-multiline": "true", "aria-label": T.fill_template, "data-placeholder": manual ? T.fill_ph_manual : T.fill_ph_auto });
     var ctx = { q: q, ed: ed, range: null };
     ed._fill = ctx;
+    /* direction of the whole sentence (same setting as the ع ← / EN → buttons of the question text) */
+    var sentenceDir = h("div", { class: "seg dir-seg", role: "radiogroup", title: T.sentence_dir, "aria-label": T.sentence_dir });
+    [["", T.blank_dir_auto], ["rtl", T.blank_dir_ar], ["ltr", T.blank_dir_en]].forEach(function (x) {
+      var on = (q.extra.dir || "") === x[0];
+      sentenceDir.appendChild(h("button", { type: "button", class: on ? "on" : "", role: "radio", "aria-checked": on ? "true" : "false", text: x[1],
+        onmousedown: function (e) { e.preventDefault(); },
+        onclick: function () { if (x[0]) q.extra.dir = x[0]; else delete q.extra.dir; touch(q); render(); } }));
+    });
 
     function chip(ans, d) {
       if (d === undefined) d = guessDir(ans);
@@ -1146,7 +1166,7 @@
         var alts = altsOf(c.getAttribute("data-ans"));
         var label = c.querySelector(".fc-label");
         c.classList.toggle("empty", !alts.length);
-        if (manual || !alts.length) label.textContent = fmt(T.blank_n_label, { n: i + 1 });
+        if (manual || !alts.length) label.textContent = fmt(T.blank_n_label, { n: window.Digits ? window.Digits.local(String(i + 1)) : i + 1 });
         else label.textContent = alts[0];
       });
     }
@@ -1195,6 +1215,7 @@
     }
     function changed(rebuildRows) {
       o.template = serialize();
+      ed.setAttribute("dir", fillDir(q));
       relabel();
       if (!manual) { syncFillPoints(q); if (q._pointsInput) setNumInput(q._pointsInput, q.points); }
       if (rebuildRows) rows();
@@ -1283,7 +1304,7 @@
       ctx.makeBtn = action;
     }
     var edBox = h("div", { class: "fill-box" }, [
-      h("div", { class: "fill-bar" }, [action, h("small", { class: "muted", text: manual ? T.insert_blank_hint : T.make_blank_hint })]), ed]);
+      h("div", { class: "fill-bar" }, [action, h("small", { class: "muted", text: manual ? T.insert_blank_hint : T.make_blank_hint }), h("span", { class: "spacer" }), sentenceDir]), ed]);
 
     var rowsBox = h("div", { class: "blank-rows" });
     function dirSelect(i) {
@@ -1413,7 +1434,7 @@
       words = words.filter(function (w, i) { return words.indexOf(w) === i; }).sort();
     }
     var bankHtml = words.length ? '<div class="pv-bank">' + words.map(function (w) { return "<span>" + esc(w) + "</span>"; }).join("") + "</div>" : "";
-    return '<div class="pv-fill" dir="' + esc(q.extra.dir || "auto") + '">' + html + "</div>" + bankHtml;
+    return '<div class="pv-fill" dir="' + fillDir(q) + '">' + html + "</div>" + bankHtml;
   }
 
   function renderOrder(q) {
@@ -1729,7 +1750,7 @@
         (o.distractors || []).forEach(function (w) { if (w) words.push(w); });
         words = words.filter(function (w, i) { return words.indexOf(w) === i; }).sort();
       }
-      return '<div class="pv-fill"' + d + ">" + html + "</div>" + (words.length ? '<div class="pv-bank">' + words.map(function (w) {
+      return '<div class="pv-fill" dir="' + fillDir(q) + '">' + html + "</div>" + (words.length ? '<div class="pv-bank">' + words.map(function (w) {
         return '<button type="button" data-k="word" data-w="' + esc(w) + '">' + esc(w) + "</button>";
       }).join("") + "</div>" : "");
     }

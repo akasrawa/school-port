@@ -199,7 +199,7 @@
         {% if q.options and q.options.bank %}
           <div class="bank" dir="auto">{% for w in fill_bank_words(q) %}<span>{{ w }}</span>{% endfor %}</div>
         {% endif %}
-        <div class="fill" dir="auto">{% for p in it.parts %}{% if p.blank is defined %}{% set given = v[p.blank] if v and p.blank < v|length else '' %}<span class="blank {{ ('ok' if fill_ok(q, p.blank, given) else 'bad') if qmark }}"{% if p.dir %} dir="{{ 'rtl' if p.dir == 'rtl' else 'ltr' }}"{% endif %}>{% if attempt %}{{ given or ' ' }}{% elif qkey %}<span class="key-ans">{{ fill_answer(q, p.blank) }}</span>{% else %}&nbsp;{% endif %}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
+        <div class="fill" dir="{{ fill_dir(q) }}">{% for p in it.parts %}{% if p.blank is defined %}{% set given = v[p.blank] if v and p.blank < v|length else '' %}<span class="blank {{ ('ok' if fill_ok(q, p.blank, given) else 'bad') if qmark }}"{% if p.dir %} dir="{{ 'rtl' if p.dir == 'rtl' else 'ltr' }}"{% endif %}>{% if attempt %}{{ given or ' ' }}{% elif qkey %}<span class="key-ans">{{ fill_answer(q, p.blank) }}</span>{% else %}&nbsp;{% endif %}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
         {% if attempt and qkey %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
       {% elif q.type == 'order' %}
         <div class="chunks" dir="auto">{% for c in it.chunks %}<span>{{ c }}</span>{% endfor %}</div>

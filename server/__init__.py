@@ -9,14 +9,14 @@ from markupsafe import Markup, escape
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .db import close_db, get_db, init_db
-from .grading import answer_images, answer_text, correct_text, fill_parts, is_manual, match_choice_image, match_rows
+from .grading import answer_images, answer_text, correct_text, fill_dir, fill_parts, is_manual, match_choice_image, match_rows
 from .i18n import current_lang, t
 from .utils import fmt_num, jl, pct, safe_next
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-APP_VERSION = "2.9.3"  # shown in the footer: tells at a glance which version is deployed
+APP_VERSION = "2.9.4"  # shown in the footer: tells at a glance which version is deployed
 SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("SERVERLESS"))
 
 
@@ -175,7 +175,7 @@ def create_app():
         t=t, fmt_num=fmt_num, pct=pct, answer_text=answer_text, correct_text=correct_text, csrf_token=csrf_token,
         media_url=lambda name: url_for("exam.media", name=name) if name else "",
         setting_flag=_flag,
-        fill_bank_words=_fill_bank_words, fill_ok=_fill_ok, fill_answer=_fill_answer, is_manual=is_manual, fill_parts=fill_parts,
+        fill_bank_words=_fill_bank_words, fill_ok=_fill_ok, fill_answer=_fill_answer, is_manual=is_manual, fill_parts=fill_parts, fill_dir=fill_dir,
         answer_images=answer_images, match_rows=match_rows, match_choice_image=match_choice_image,
     )
 

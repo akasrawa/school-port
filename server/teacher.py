@@ -266,7 +266,7 @@ def edit_form(fid):
         "cb_calc_none", "match_wrong_add", "match_wrong_ph", "match_hint_one", "draw_small", "draw_medium", "draw_large", "draw_xl",
         "partial_line", "sec_reading_ph", "option_n",
         "tf_statement_n", "tf_add_statement", "tf_instruction_default", "tf_statements", "tf_pick_each", "warn_tf_items", "warn_tf_marks",
-        "tf_make_multi", "tf_total_auto", "blank_dir", "blank_dir_auto", "blank_dir_ar", "blank_dir_en", "blank_dir_num",
+        "tf_make_multi", "tf_total_auto", "blank_dir", "sentence_dir", "blank_dir_auto", "blank_dir_ar", "blank_dir_en", "blank_dir_num",
         "draw_on_image", "draw_on_image_note", "draw_need_image", "draw_on_image_hint", "change_image", "add_image",
         "n_incomplete_one",
         "n_incomplete",
