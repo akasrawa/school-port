@@ -44,7 +44,13 @@
         function (input) { return parseInt(input.value, 10); }
       );
     }
-    if (type === "mcq" || type === "truefalse" || type === "scale") {
+    if (type === "truefalse" && card.querySelector("[data-tf-multi]")) {
+      return Array.prototype.map.call(card.querySelectorAll(".tf-item"), function (row) {
+        var c = row.querySelector("input[data-tf]:checked");
+        return c ? c.value : "";
+      });
+    }
+        if (type === "mcq" || type === "truefalse" || type === "scale") {
       var checked = card.querySelector('input[name="q' + qid + '"]:checked');
       return checked ? checked.value : "";
     }
@@ -59,7 +65,7 @@
       return !!(name && name.textContent.trim());
     }
     var value = readValue(card);
-    if (type === "match" || type === "fill") {
+    if (type === "match" || type === "fill" || (type === "truefalse" && Array.isArray(value))) {
       return value.length > 0 && value.every(function (v) { return String(v || "").trim() !== ""; });
     }
     if (Array.isArray(value)) return value.length > 0;

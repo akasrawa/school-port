@@ -29,6 +29,7 @@
     q.extra = q.extra && typeof q.extra === "object" ? q.extra : {};
     if (CHOICE.indexOf(q.type) !== -1) { q.options = Array.isArray(q.options) ? q.options : []; while (q.options.length < 2) q.options.push(""); }
     if (q.type === "match") { q.options = q.options && typeof q.options === "object" ? q.options : {}; if (!(q.options.pairs || []).length) q.options.pairs = [["", ""]]; }
+    if (tfMulti(q)) { if (!q.options.items.length) q.options.items = ["", ""]; if (!q.manual_grade && !Array.isArray(q.correct)) q.correct = []; tfSync(q); }
     return q;
   }
   questions.forEach(padEmpty);
@@ -152,6 +153,27 @@
     if (m[2]) saveState.querySelector("span").textContent = m[2];
   }
 
+  function tfMulti(q) { return q.type === "truefalse" && q.options && Array.isArray(q.options.items); }
+  /* keep statements, marks and points the same length */
+  function tfSync(q) {
+    var o = q.options, n = o.items.length;
+    if (!Array.isArray(o.item_points)) o.item_points = [];
+    o.item_points = o.item_points.slice(0, n);
+    while (o.item_points.length < n) o.item_points.push(1);
+    if (!q.manual_grade) {
+      var c = Array.isArray(q.correct) ? q.correct.slice(0, n) : [];
+      while (c.length < n) c.push(null);
+      q.correct = c;
+      q.points = num(o.item_points.reduce(function (a, b) { return a + (parseFloat(b) || 0); }, 0));
+    }
+  }
+  function tfDefaults(q) {
+    q.options = { items: ["", ""], item_points: [1, 1] };
+    q.correct = q.manual_grade ? null : [null, null];
+    if (!String(q.text || "").trim()) q.text = T.tf_instruction_default;
+    q.points = 2;
+  }
+
   function newQuestion(type) {
     var manual = GRADED.indexOf(type) !== -1 && !!data.defaultManual;
     var q = {
@@ -162,6 +184,7 @@
     };
     applyTypeDefaults(q);
     if (type === "fill") q.options.bank = !manual;
+    if (type === "truefalse") tfDefaults(q);  /* new cards hold several statements */
     return q;
   }
 
@@ -176,6 +199,8 @@
       if (!q.options || !Array.isArray(q.options.pairs)) q.options = { pairs: [["", ""], ["", ""], ["", ""]], distractors: [] };
     } else if (q.type === "fill") {
       if (!q.options || typeof q.options.template !== "string") q.options = { template: "", bank: !q.manual_grade, distractors: [] };
+    } else if (q.type === "truefalse" && q.options && Array.isArray(q.options.items)) {
+      /* several statements: keep them */
     } else {
       q.options = null;
     }
@@ -198,6 +223,7 @@
     if (UNSCORED.indexOf(type) !== -1) q.points = 0;
     else if (wasUnscored) q.points = 1;
     if (type === "section") q.required = false;
+    if (type === "truefalse") tfDefaults(q);
     if (type !== "checkbox") q.partial = false;
     delete q.extra.option_images; delete q.extra.left_images; delete q.extra.right_images;
   }
@@ -222,6 +248,12 @@
     })) return T.warn_add_pair;
     if (q.type === "fill" && !blanksOf(q).length) return T.warn_add_blank;
     if (q.type === "order" && !(q.correct || []).length) return T.warn_add_answer;
+    if (tfMulti(q)) {
+      var filledTf = q.options.items.filter(function (x) { return String(x).trim(); }).length;
+      if (!filledTf) return T.warn_tf_items;
+      if (q.manual_grade) return "";
+      return q.options.items.every(function (x, i) { return !String(x).trim() || (q.correct && (q.correct[i] === "true" || q.correct[i] === "false")); }) ? "" : T.warn_tf_marks;
+    }
     if (GRADED.indexOf(q.type) === -1 || q.manual_grade) return "";
     if (q.type === "fill") return blanksOf(q).every(function (b) { return altsOf(b).length; }) ? "" : T.warn_blank_answers;
     if (q.type === "match" || q.type === "order") return "";
@@ -432,7 +464,7 @@
 
   function footRow(q) {
     var row = h("div", { class: "q-row q-foot" });
-    var autoFill = q.type === "fill" && !q.manual_grade;
+    var autoFill = (q.type === "fill" || tfMulti(q)) && !q.manual_grade;
     if (UNSCORED.indexOf(q.type) === -1) {
       var points = numInput({ value: q.points, "aria-label": T.points, maxlength: "7",
         readonly: autoFill, title: autoFill ? T.fill_points_auto : null,
@@ -457,6 +489,7 @@
               if (!q._bankTouched) q.options.bank = !manual; /* word box: on for auto, off for manual by default */
               if (!manual) syncFillPoints(q);
             }
+            if (tfMulti(q)) { if (manual) q.correct = null; tfSync(q); }
             touch(q); render();
           } }));
       });
@@ -740,7 +773,7 @@
   }
 
   function cleanListItem(line) {
-    return String(line).replace(/^\s*(?:[-*•▪◦·]|\(?[0-9٠-٩]+[.)\-]|\(?[a-zA-Zأ-ي][.)])\s+/, "").trim();
+    return String(line).replace(/^\s*(?:[-*•▪◦·]\s+|\(?[0-9٠-٩]+\s*[.)\-]\s*|\(?[a-zA-Zأ-ي][.)]\s+)/, "").trim();
   }
 
   function addOption(q, at) {
@@ -790,7 +823,74 @@
   }
 
   /* ---------- true / false: both buttons always visible ---------- */
+  function renderTrueFalseMulti(q) {
+    var o = q.options, manual = !!q.manual_grade;
+    tfSync(q);
+    var list = h("div", { class: "tfm-list" });
+    o.items.forEach(function (text, i) {
+      var mark = !manual && q.correct ? q.correct[i] : null;
+      var row = h("div", { class: "tfm-row" + (mark ? " has-" + mark : "") });
+      row.appendChild(h("span", { class: "pair-num", text: String(i + 1) }));
+      var input = h("textarea", { rows: "1", maxlength: "500", class: "tfm-text", dir: q.extra.dir || "auto", "data-opt": i,
+        placeholder: fmt(T.tf_statement_n, { n: i + 1 }), "aria-label": fmt(T.tf_statement_n, { n: i + 1 }),
+        oninput: function () { o.items[i] = input.value; touch(q); },
+        onkeydown: function (e) {
+          if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); tfAdd(q, i + 1); }
+        },
+        onpaste: function (e) {
+          var t = (e.clipboardData || window.clipboardData).getData("text");
+          if (window.App.fixPdfArabic) t = window.App.fixPdfArabic(t);
+          var rowsIn = String(t || "").split(/\r?\n/).map(cleanListItem).filter(Boolean);
+          if (rowsIn.length < 2) return;
+          e.preventDefault();
+          rowsIn.forEach(function (r, k) {
+            var at = i + k;
+            if (at < o.items.length && (k === 0 || !String(o.items[at]).trim())) o.items[at] = r;
+            else { o.items.splice(at, 0, r); o.item_points.splice(at, 0, 1); if (Array.isArray(q.correct)) q.correct.splice(at, 0, null); }
+          });
+          o.items = o.items.slice(0, 40);
+          touch(q); render();
+        } });
+      input.value = text;
+      row.appendChild(input);
+      if (!manual) {
+        var picks = h("span", { class: "tfm-picks", role: "radiogroup", "aria-label": T.correct_answer });
+        [["true", "✓", "yes"], ["false", "✗", "no"]].forEach(function (m) {
+          picks.appendChild(h("button", { type: "button", class: "tfm-pick " + m[2] + (mark === m[0] ? " on" : ""), text: m[1], title: T[m[0]],
+            "aria-label": T[m[0]], "aria-pressed": mark === m[0] ? "true" : "false",
+            onclick: function () { q.correct[i] = m[0]; touch(q); render(); } }));
+        });
+        row.appendChild(picks);
+        var val = h("span", { class: "step-val", text: String(num(o.item_points[i])) });
+        row.appendChild(h("span", { class: "stepper", title: T.points }, [
+          h("button", { type: "button", html: icon("minus", 12), title: "−", onclick: function () {
+            o.item_points[i] = Math.max(0, num((parseFloat(o.item_points[i]) || 0) - 0.5)); tfSync(q); touch(q); render(); } }), val,
+          h("button", { type: "button", html: icon("plus", 12), title: "+", onclick: function () {
+            o.item_points[i] = num((parseFloat(o.item_points[i]) || 0) + 0.5); tfSync(q); touch(q); render(); } })]));
+      }
+      row.appendChild(iconButton("x", T.remove, function () {
+        if (o.items.length <= 1) return;
+        o.items.splice(i, 1); o.item_points.splice(i, 1); if (Array.isArray(q.correct)) q.correct.splice(i, 1);
+        touch(q); render();
+      }, { danger: true, disabled: o.items.length <= 1, extraClass: "ghosty" }));
+      list.appendChild(row);
+    });
+    var parts = [h("div", { class: "opt-head" }, [h("b", { text: T.tf_statements }), manual ? null : h("small", { class: "muted", text: T.tf_total_auto })]), list,
+      h("div", { class: "opt-tools" }, [chipButton("plus", T.tf_add_statement, function () { tfAdd(q, o.items.length); })]),
+      h("p", { class: "q-hint", text: manual ? T.tf_manual_hint : T.tf_pick_each })];
+    return h("div", { class: "q-fields" }, parts);
+  }
+  function tfAdd(q, at) {
+    var o = q.options;
+    if (o.items.length >= 40) return;
+    o.items.splice(at, 0, ""); o.item_points.splice(at, 0, 1);
+    if (Array.isArray(q.correct)) q.correct.splice(at, 0, null);
+    pendingFocus = { q: q, opt: at };
+    touch(q); render();
+  }
+
   function renderTrueFalse(q) {
+    if (tfMulti(q)) return renderTrueFalseMulti(q);
     var manual = !!q.manual_grade;
     var box = h("div", { class: "tf-edit" + (manual ? " manual" : "") }, manual ? [] : [h("small", { class: "muted", text: T.tf_pick_hint })]);
     var row = h("div", { class: "tf-row", role: manual ? null : "radiogroup", "aria-label": T.correct_answer });
@@ -803,6 +903,15 @@
     });
     box.appendChild(row);
     if (manual) box.appendChild(h("small", { class: "muted", text: T.tf_manual_hint }));
+    /* an older one-statement card can become a list of statements */
+    box.appendChild(h("div", { class: "opt-tools" }, [chipButton("plus", T.tf_make_multi, function () {
+      var first = String(q.text || "").trim();
+      q.options = { items: [first, ""], item_points: [num(q.points) || 1, 1] };
+      q.correct = q.manual_grade ? null : [q.correct === "true" || q.correct === "false" ? q.correct : null, null];
+      q.text = T.tf_instruction_default;
+      pendingFocus = { q: q, opt: 1 };
+      touch(q); render();
+    })]));
     return box;
   }
 
@@ -995,6 +1104,19 @@
     }
   }
 
+  /* a blank holding a number or an English word is written left-to-right inside an Arabic sentence */
+  function guessDir(ans) {
+    var w = altsOf(ans)[0] || "";
+    if (!w) return "";
+    if (/^[\d٠-٩۰-۹.,٫\/\-+×÷=%\s]+$/.test(w)) return "num";
+    if (/[A-Za-z]/.test(w) && !/[\u0600-\u06FF]/.test(w)) return "ltr";
+    return "";
+  }
+  function applyDir(input, d) {
+    if (d) input.setAttribute("dir", d === "rtl" ? "rtl" : "ltr"); else input.setAttribute("dir", (input.getAttribute("data-qdir") || "auto"));
+    if (d === "num") input.setAttribute("inputmode", "decimal"); else input.removeAttribute("inputmode");
+  }
+
   function renderFill(q) {
     var o = q.options;
     var manual = !!q.manual_grade;
@@ -1003,8 +1125,10 @@
     var ctx = { q: q, ed: ed, range: null };
     ed._fill = ctx;
 
-    function chip(ans) {
-      var c = h("span", { class: "fill-chip", contenteditable: "false", "data-ans": ans });
+    function chip(ans, d) {
+      if (d === undefined) d = guessDir(ans);
+      var c = h("span", { class: "fill-chip", contenteditable: "false", "data-ans": ans, "data-dir": d || "" });
+      if (d) c.setAttribute("dir", d === "rtl" ? "rtl" : "ltr");
       c.appendChild(h("span", { class: "fc-label" }));
       c.appendChild(h("button", { type: "button", class: "fc-x", tabindex: "-1", title: T.unblank, html: icon("x", 11),
         onmousedown: function (e) { e.preventDefault(); },
@@ -1033,22 +1157,25 @@
           if (part) ed.appendChild(document.createTextNode(part));
         });
       }
+      var dirs = Array.isArray(o.blank_dirs) ? o.blank_dirs : [], k = 0;
       BLANK_RE.lastIndex = 0;
       while ((m = BLANK_RE.exec(text))) {
         addText(text.slice(last, m.index));
-        ed.appendChild(chip(m[1].trim() ? m[1] : ""));
+        ed.appendChild(chip(m[1].trim() ? m[1] : "", dirs[k] || ""));
+        k += 1;
         last = m.index + m[0].length;
       }
       addText(text.slice(last));
       relabel();
     }
     function serialize() {
-      var out = "";
+      var out = "", dirs = [];
       function walk(node) {
         Array.prototype.forEach.call(node.childNodes, function (child) {
           if (child.nodeType === 3) out += child.nodeValue.replace(/ /g, " ");
           else if (child.nodeType === 1) {
             if (child.classList.contains("fill-chip")) {
+              dirs.push(child.getAttribute("data-dir") || "");
               var ans = altsOf(child.getAttribute("data-ans")).join("|");
               out += "[" + (ans || " ") + "]";
             } else if (child.tagName === "BR") out += "\n";
@@ -1060,6 +1187,8 @@
         });
       }
       walk(ed);
+      /* writing direction of each blank travels with its chip */
+      if (dirs.some(Boolean)) o.blank_dirs = dirs; else delete o.blank_dirs;
       return out.replace(/\n+$/, "");
     }
     function changed(rebuildRows) {
@@ -1155,11 +1284,35 @@
       h("div", { class: "fill-bar" }, [action, h("small", { class: "muted", text: manual ? T.insert_blank_hint : T.make_blank_hint })]), ed]);
 
     var rowsBox = h("div", { class: "blank-rows" });
+    function dirSelect(i) {
+      var cur = (o.blank_dirs || [])[i] || "";
+      var sel = h("select", { class: "blank-dir", "aria-label": T.blank_dir, title: T.blank_dir, onchange: function () {
+        var c = ed.querySelectorAll(".fill-chip")[i];
+        if (!c) return;
+        c.setAttribute("data-dir", sel.value);
+        if (sel.value) c.setAttribute("dir", sel.value === "rtl" ? "rtl" : "ltr"); else c.removeAttribute("dir");
+        changed(false);
+        var a = rowsBox.querySelector('[data-blank="' + i + '"]');
+        if (a) applyDir(a, sel.value);
+      } });
+      [["", T.blank_dir_auto], ["rtl", T.blank_dir_ar], ["ltr", T.blank_dir_en], ["num", T.blank_dir_num]].forEach(function (x) {
+        var op = h("option", { value: x[0], text: x[1] });
+        if (x[0] === cur) op.selected = true;
+        sel.appendChild(op);
+      });
+      return sel;
+    }
     function rows() {
       rowsBox.textContent = "";
-      if (manual) return;
       var blanks = blanksOf(q);
       if (!blanks.length) return;
+      if (manual) {  /* manual: only the writing direction of each blank */
+        rowsBox.appendChild(h("div", { class: "blank-rows-head" }, [h("b", { text: T.blank_dir })]));
+        var line = h("div", { class: "blank-dirs" });
+        blanks.forEach(function (b, i) { line.appendChild(h("span", { class: "blank-dir-item" }, [h("span", { class: "bn", text: String(i + 1) }), dirSelect(i)])); });
+        rowsBox.appendChild(line);
+        return;
+      }
       rowsBox.appendChild(h("div", { class: "blank-rows-head" }, [h("b", { text: T.blank_rows_title }),
         h("button", { type: "button", class: "link", text: T.distribute_equally, onclick: function () {
           var count = blanks.length, total = parseFloat(q.points) || count;
@@ -1212,7 +1365,8 @@
         var stepper = h("span", { class: "stepper" }, [
           h("button", { type: "button", html: icon("minus", 12), title: "−", onclick: function () { step(-0.5); } }), val,
           h("button", { type: "button", html: icon("plus", 12), title: "+", onclick: function () { step(0.5); } })]);
-        rowsBox.appendChild(h("div", { class: "blank-row" }, [h("span", { class: "bn", text: String(i + 1) }), ans, altBox, addAlt, h("span", { class: "spacer" }), stepper]));
+        applyDir(ans, (o.blank_dirs || [])[i]);
+        rowsBox.appendChild(h("div", { class: "blank-row" }, [h("span", { class: "bn", text: String(i + 1) }), ans, altBox, addAlt, h("span", { class: "spacer" }), dirSelect(i), stepper]));
       });
       var totalEl = h("b", { text: String(num(q.points)) });
       rowsBox.appendChild(h("div", { class: "blank-total" }, [h("span", { text: T.fill_points_auto }), totalEl]));
@@ -1537,6 +1691,17 @@
         return '<option value="' + i + '"' + (v === i ? " selected" : "") + ">" + esc(shown(opt)) + "</option>";
       }).join("") + "</select>";
     }
+    if (tfMulti(q)) {
+      var vals = Array.isArray(v) ? v : [], k = -1;
+      return '<div class="pv-tfl"' + d + ">" + q.options.items.map(function (it, n) {
+        if (!String(it).trim()) return '<div class="pv-tfr ghost"><span class="pv-tfn">' + (n + 1) + "</span><span>" + esc(fmt(T.tf_statement_n, { n: n + 1 })) + "</span></div>";
+        k += 1;
+        return '<div class="pv-tfr"><span class="pv-tfn">' + (n + 1) + "</span><span class=\"pv-tfs\">" + rich(it) + "</span>" +
+          ["true", "false"].map(function (val) {
+            return '<label class="pv-tfp ' + (val === "true" ? "yes" : "no") + '"><input type="radio" name="pv-tf' + k + '" data-k="tfm" data-i="' + k + '" value="' + val + '"' + (vals[k] === val ? " checked" : "") + "><span>" + (val === "true" ? "✓" : "✗") + "</span></label>";
+          }).join("") + "</div>";
+      }).join("") + "</div>";
+    }
     if (q.type === "truefalse") {
       return ["true", "false"].map(function (val) {
         return '<label class="pv-opt pick"><input type="radio" name="pv-tf" data-k="tf" value="' + val + '"' + (v === val ? " checked" : "") + "><span>" + esc(T[val]) + "</span></label>";
@@ -1550,7 +1715,8 @@
       var vals = Array.isArray(v) ? v : [];
       BLANK_RE.lastIndex = 0;
       while ((m = BLANK_RE.exec(text))) {
-        html += rich(text.slice(last, m.index)) + '<input class="pv-blank-in" type="text" data-k="blank" data-i="' + k + '" value="' + esc(vals[k] || "") + '">';
+        var bd = ((o && o.blank_dirs) || [])[k];
+        html += rich(text.slice(last, m.index)) + '<input class="pv-blank-in" type="text" data-k="blank" data-i="' + k + '"' + (bd ? ' dir="' + (bd === "rtl" ? "rtl" : "ltr") + '"' + (bd === "num" ? ' inputmode="decimal"' : "") : "") + ' value="' + esc(vals[k] || "") + '">';
         last = m.index + m[0].length;
         k += 1;
       }
@@ -1622,6 +1788,11 @@
         } else q._try = parseInt(el.value, 10);
       } else if (k === "select") q._try = el.value === "" ? undefined : parseInt(el.value, 10);
       else if (k === "tf") q._try = el.value;
+      else if (k === "tfm") {
+        var n = preview.querySelectorAll(".pv-tfr:not(.ghost)").length, outv = [];
+        for (var j = 0; j < n; j += 1) { var c = preview.querySelector('[data-k="tfm"][data-i="' + j + '"]:checked'); outv.push(c ? c.value : ""); }
+        q._try = outv;
+      }
       else if (k === "text") q._try = el.value;
       else if (k === "blank") {
         var vals = Array.prototype.map.call(preview.querySelectorAll('[data-k="blank"]'), function (x) { return x.value; });
@@ -1701,6 +1872,9 @@
           (img ? '<img src="' + esc(media(img)) + '" alt="">' : "") + "</div>";
       }).join("");
     }
+    if (tfMulti(q)) return '<div class="pv-tfl"' + d + ">" + q.options.items.map(function (it, n) {
+      return '<div class="pv-tfr' + (String(it).trim() ? "" : " ghost") + '"><span class="pv-tfn">' + (n + 1) + "</span><span class=\"pv-tfs\">" + (String(it).trim() ? rich(it) : esc(fmt(T.tf_statement_n, { n: n + 1 }))) + '</span><span class="pv-tfp yes"><span>✓</span></span><span class="pv-tfp no"><span>✗</span></span></div>';
+    }).join("") + "</div>";
     if (q.type === "truefalse") return ["true", "false"].map(function (v) { return '<div class="pv-opt"><span class="pv-mark"></span><span>' + esc(T[v]) + "</span></div>"; }).join("");
     if (q.type === "short" || q.type === "number" || q.type === "date") return '<div class="pv-input"' + d + ">" + esc(q.type === "date" ? "yyyy-mm-dd" : T.your_answer) + "</div>";
     if (q.type === "paragraph") return '<div class="pv-input tall"' + d + ">" + esc(T.your_answer) + "</div>";

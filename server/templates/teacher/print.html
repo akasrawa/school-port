@@ -51,6 +51,11 @@
   .wline { border-bottom: 1px dotted var(--ink); height: 1.9em; margin: 0 1.2rem 0 1.2rem; }
   .wline.ans { height: auto; min-height: 1.9em; font-weight: 600; padding-inline: 0.3rem; white-space: pre-wrap; }
   .key-ans { color: var(--ok); font-weight: 700; }
+  .tfl { border-collapse: collapse; margin: 0.2rem 0; }
+  .tfl td { padding: 0.25rem 0.4rem; vertical-align: middle; }
+  .tfl .tfn { color: #64748b; font-weight: 700; width: 1.8rem; }
+  .tfl .tfbox { width: 2rem; height: 1.7rem; border: 1.5px solid #94a3b8; border-radius: 6px; text-align: center; font-weight: 800; font-size: 1.1rem; }
+  .tfl .tfbox.ok { color: #15803d; border-color: #15803d; } .tfl .tfbox.bad { color: #b91c1c; border-color: #b91c1c; }
   .fill { white-space: pre-wrap; padding-inline-start: 1.2rem; line-height: 2.3; }
   .blank { display: inline-block; min-width: 5.5em; border-bottom: 1.2px solid var(--ink); text-align: center; font-weight: 700; padding: 0 0.3em; line-height: 1.4; }
   .blank.ok { color: var(--ok); } .blank.bad { color: var(--bad); }
@@ -176,6 +181,14 @@
           <span class="opt {{ 'key' if is_key }} {{ 'picked' if picked }} {{ 'wrong' if picked and qmark and not is_key }}"><span class="c">{{ L[loop.index0] if loop.index0 < L|length else loop.index }}</span>{{ o | rich }}{% if ex.option_images and loop.index0 < ex.option_images|length and ex.option_images[loop.index0] %}<img class="oimg" src="{{ media_url(ex.option_images[loop.index0]) }}" alt="">{% endif %}</span>
         {% endfor %}
         </div>
+      {% elif q.type == 'truefalse' and q.options is mapping and q.options.get('items') %}
+        <table class="tfl" dir="{{ qd }}">
+          {% for item in q.options.get('items') %}{% set i = loop.index0 %}{% set sv = v[i] if attempt and v and i < v|length else none %}{% set kv = q.correct[i] if qkey and q.correct and i < q.correct|length else none %}
+          <tr><td class="tfn">{{ loop.index }}.</td><td class="tfs">{{ item | rich }}</td>
+            <td class="tfbox {{ ('ok' if sv == kv else 'bad') if attempt and qmark and kv }}">{{ '✓' if sv == 'true' else ('✗' if sv == 'false' else '') }}</td>
+            {% if qkey and kv %}<td class="key-ans">{{ '✓' if kv == 'true' else '✗' }}</td>{% endif %}</tr>
+          {% endfor %}
+        </table>
       {% elif q.type == 'truefalse' %}
         <div class="opts">
           {% if attempt %}<span>{{ t('student_answer') }}: <span class="tf ans-tf">{{ '✓' if v == 'true' else ('✗' if v == 'false' else '') }}</span></span>{% endif %}
@@ -186,7 +199,7 @@
         {% if q.options and q.options.bank %}
           <div class="bank" dir="auto">{% for w in fill_bank_words(q) %}<span>{{ w }}</span>{% endfor %}</div>
         {% endif %}
-        <div class="fill" dir="auto">{% for p in it.parts %}{% if p.blank is defined %}{% set given = v[p.blank] if v and p.blank < v|length else '' %}<span class="blank {{ ('ok' if fill_ok(q, p.blank, given) else 'bad') if qmark }}">{% if attempt %}{{ given or ' ' }}{% elif qkey %}<span class="key-ans">{{ fill_answer(q, p.blank) }}</span>{% else %}&nbsp;{% endif %}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
+        <div class="fill" dir="auto">{% for p in it.parts %}{% if p.blank is defined %}{% set given = v[p.blank] if v and p.blank < v|length else '' %}<span class="blank {{ ('ok' if fill_ok(q, p.blank, given) else 'bad') if qmark }}"{% if p.dir %} dir="{{ 'rtl' if p.dir == 'rtl' else 'ltr' }}"{% endif %}>{% if attempt %}{{ given or ' ' }}{% elif qkey %}<span class="key-ans">{{ fill_answer(q, p.blank) }}</span>{% else %}&nbsp;{% endif %}</span>{% else %}{{ p.text | rich }}{% endif %}{% endfor %}</div>
         {% if attempt and qkey %}<div class="desc key-ans">✓ {{ correct_text(q) }}</div>{% endif %}
       {% elif q.type == 'order' %}
         <div class="chunks" dir="auto">{% for c in it.chunks %}<span>{{ c }}</span>{% endfor %}</div>

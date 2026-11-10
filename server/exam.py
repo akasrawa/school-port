@@ -174,6 +174,11 @@ def _clean_value(q, value):
         picked = sorted({int(i) for i in value if str(i).lstrip("-").isdigit() and 0 <= int(i) < size})
         return picked or None
     if kind == "truefalse":
+        items = (q["options"] or {}).get("items") if isinstance(q["options"], dict) else None
+        if isinstance(items, list):  # one ✓ / ✗ per statement
+            values = value if isinstance(value, list) else []
+            out = [(str(v) if str(v) in ("true", "false") else None) for v in values[:len(items)]]
+            return out if any(out) else None
         return str(value) if str(value) in ("true", "false") else None
     if kind == "scale":
         try:

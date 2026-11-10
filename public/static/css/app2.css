@@ -445,3 +445,53 @@ input[data-num] { font-variant-numeric: tabular-nums; }
 .pv-draw.on-img { height: auto; position: relative; background: #fff; }
 .pv-draw.on-img img { display: block; width: 100%; border-radius: 9px; }
 .draw-q.on-img .draw-pad { background-repeat: no-repeat; }
+
+/* true / false with several statements (student page) */
+.tf-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.tf-item { display: flex; align-items: center; gap: 0.7rem; border: 1.5px solid var(--line); border-radius: 12px; padding: 0.55rem 0.75rem; }
+.tf-item:has(input:checked) { border-color: #CBD5E1; background: #F8FAFC; }
+.tf-n { flex: none; width: 1.8rem; height: 1.8rem; border-radius: 50%; display: grid; place-items: center; background: #EFF6FF; color: #1D4ED8; font-weight: 800; font-size: 0.85rem; }
+.tf-s { flex: 1; min-width: 0; line-height: 1.7; }
+.tf-picks { flex: none; display: inline-flex; gap: 0.4rem; }
+.tf-pick { position: relative; cursor: pointer; }
+.tf-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.tf-pick span { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 11px; border: 1.5px solid var(--line-strong); background: #fff; font-size: 1.25rem; font-weight: 800; color: #94A3B8; transition: .12s; }
+.tf-pick.yes:hover span { border-color: #16A34A; color: #16A34A; }
+.tf-pick.no:hover span { border-color: #DC2626; color: #DC2626; }
+.tf-pick.yes input:checked + span { background: #16A34A; border-color: #16A34A; color: #fff; }
+.tf-pick.no input:checked + span { background: #DC2626; border-color: #DC2626; color: #fff; }
+.tf-pick input:focus-visible + span { outline: 3px solid var(--blue); outline-offset: 2px; }
+@media (max-width: 480px) { .tf-pick span { width: 2.3rem; height: 2.3rem; } }
+
+/* builder: true / false with several statements */
+.tfm-list { display: flex; flex-direction: column; gap: 8px; }
+.tfm-row { display: flex; align-items: center; gap: 8px; border: 1px solid #E2E8F0; border-radius: 12px; padding: 4px 8px; min-height: 46px; background: #fff; }
+.tfm-row.has-true { border-color: #86EFAC; background: #F0FDF4; }
+.tfm-row.has-false { border-color: #FCA5A5; background: #FEF2F2; }
+.builder .qcard textarea.tfm-text { flex: 1; min-width: 0; border: 0; background: transparent; min-height: 38px; padding-block: 8px; box-shadow: none !important; line-height: 1.5; }
+.tfm-picks { display: inline-flex; gap: 4px; flex: none; }
+.tfm-pick { width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid #CBD5E1; background: #fff; font: inherit; font-size: 1.15rem; font-weight: 800; color: #94A3B8; cursor: pointer; display: grid; place-items: center; }
+.tfm-pick.yes:hover { border-color: #16A34A; color: #16A34A; }
+.tfm-pick.no:hover { border-color: #DC2626; color: #DC2626; }
+.tfm-pick.yes.on { background: #16A34A; border-color: #16A34A; color: #fff; }
+.tfm-pick.no.on { background: #DC2626; border-color: #DC2626; color: #fff; }
+.tfm-row .stepper { flex: none; }
+@media (max-width: 640px) { .tfm-row { flex-wrap: wrap; } .builder .qcard textarea.tfm-text { flex-basis: calc(100% - 40px); } }
+
+/* preview */
+.pv-tfl { display: flex; flex-direction: column; gap: 6px; }
+.pv-tfr { display: flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+.pv-tfr.ghost { color: #94A3B8; border-style: dashed; background: #F8FAFC; }
+.pv-tfn { flex: none; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: #EFF6FF; color: #1D4ED8; font-weight: 800; font-size: 0.75rem; display: grid; place-items: center; }
+.pv-tfs { flex: 1; min-width: 0; font-size: 0.85rem; }
+.pv-tfp { position: relative; flex: none; cursor: pointer; }
+.pv-tfp input { position: absolute; opacity: 0; }
+.pv-tfp span { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 8px; border: 1.5px solid var(--line-strong); font-weight: 800; color: #94A3B8; }
+.pv-tfp.yes input:checked + span { background: #16A34A; border-color: #16A34A; color: #fff; }
+.pv-tfp.no input:checked + span { background: #DC2626; border-color: #DC2626; color: #fff; }
+
+/* fill: direction of each blank */
+.blank-row select.blank-dir, .blank-dirs select.blank-dir { width: auto; height: 32px !important; min-height: 32px !important; padding-block: 0; font-size: 0.8rem; flex: none; }
+.blank-dirs { display: flex; flex-wrap: wrap; gap: 8px; }
+.blank-dir-item { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #E2E8F0; border-radius: 10px; padding: 4px 6px; }
+.fill-chip[dir="ltr"] .fc-label { unicode-bidi: isolate; }

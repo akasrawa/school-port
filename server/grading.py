@@ -59,14 +59,41 @@ def blank_weights(q, count):
     return [1.0] * count
 
 
+def tf_items(q):
+    """Statements of a true/false card with several statements (options.items); None for a classic one-statement question."""
+    o = q.get("options")
+    if q.get("type") == "truefalse" and isinstance(o, dict) and isinstance(o.get("items"), list):
+        return o["items"]
+    return None
+
+
+def tf_weights(q, count):
+    """Points of each statement (options.item_points); one each when not set."""
+    raw = (q.get("options") or {}).get("item_points")
+    if isinstance(raw, list) and len(raw) == count:
+        try:
+            weights = [max(0.0, float(x)) for x in raw]
+            if sum(weights) > 0:
+                return weights
+        except (TypeError, ValueError):
+            pass
+    return [1.0] * count
+
+
+BLANK_DIRS = ("ltr", "rtl", "num")
+
+
 def fill_parts(q):
     """Template split into text and blank pieces for rendering."""
     template = (q.get("options") or {}).get("template", "") if isinstance(q.get("options"), dict) else ""
+    dirs = (q.get("options") or {}).get("blank_dirs") if isinstance(q.get("options"), dict) else None
+    dirs = dirs if isinstance(dirs, list) else []
     parts, last, index = [], 0, 0
     for m in BLANK_RE.finditer(template):
         if m.start() > last:
             parts.append({"text": template[last:m.start()]})
-        parts.append({"blank": index})
+        d = dirs[index] if index < len(dirs) and dirs[index] in BLANK_DIRS else ""
+        parts.append({"blank": index, "dir": d})
         index += 1
         last = m.end()
     if last < len(template):
@@ -146,6 +173,9 @@ def has_key(q):
     if kind == "checkbox":
         return bool(correct)
     if kind == "truefalse":
+        items = tf_items(q)
+        if items is not None:
+            return bool(items) and isinstance(correct, list) and len(correct) == len(items) and all(c in ("true", "false") for c in correct)
         return correct in ("true", "false")
     if kind == "short":
         return bool(correct)
@@ -190,6 +220,12 @@ def grade_auto(q, value):
         if kind in ("mcq", "dropdown"):
             return points if int(value) == q["correct"] else 0.0
         if kind == "truefalse":
+            items = tf_items(q)
+            if items is not None:
+                values = (list(value) if isinstance(value, list) else []) + [None] * len(items)
+                weights = tf_weights(q, len(items))
+                right = sum(weights[i] for i in range(len(items)) if values[i] in ("true", "false") and values[i] == q["correct"][i])
+                return round(points * right / (sum(weights) or 1), 2)
             return points if str(value) == q["correct"] else 0.0
         if kind == "checkbox":
             chosen = {int(x) for x in value}
@@ -333,6 +369,13 @@ def answer_text(q, value):
         if kind == "checkbox":
             return "، ".join(options[int(i)] for i in value)
         if kind == "truefalse":
+            items = tf_items(q)
+            if items is not None:
+                values = list(value) if isinstance(value, list) else []
+                return "\n".join(
+                    f"{i + 1}. {item} → " + (("✓ " + t("true")) if i < len(values) and values[i] == "true" else ("✗ " + t("false")) if i < len(values) and values[i] == "false" else "—")
+                    for i, item in enumerate(items)
+                )
             return t("true") if str(value) == "true" else t("false")
         if kind == "match":
             pairs = match_pairs(q)
@@ -395,6 +438,9 @@ def correct_text(q):
     if kind == "checkbox":
         return "، ".join(options[i] for i in correct if 0 <= i < len(options))
     if kind == "truefalse":
+        items = tf_items(q)
+        if items is not None:
+            return "\n".join(f"{i + 1}. {item} → " + ("✓ " + t("true") if c == "true" else "✗ " + t("false")) for i, (item, c) in enumerate(zip(items, correct)))
         return t("true") if correct == "true" else t("false")
     if kind == "short":
         return " / ".join(correct)
@@ -468,7 +514,7 @@ def form_analytics(db, form, questions):
             elif q["type"] == "checkbox" and isinstance(value, list):
                 for item in value:
                     counts[str(item)] = counts.get(str(item), 0) + 1
-            elif q["type"] == "truefalse" and not is_empty(value):
+            elif q["type"] == "truefalse" and tf_items(q) is None and not is_empty(value):
                 counts[str(value)] = counts.get(str(value), 0) + 1
         choices = []
         if q["type"] in CHOICE_TYPES:
@@ -479,7 +525,7 @@ def form_analytics(db, form, questions):
                     else i in (q["correct"] or [])
                 )
                 choices.append({"label": label, "count": counts.get(str(i), 0), "correct": is_right})
-        elif q["type"] == "truefalse":
+        elif q["type"] == "truefalse" and tf_items(q) is None:
             for key in ("true", "false"):
                 choices.append(
                     {"label": t(key), "count": counts.get(key, 0), "correct": q["correct"] == key}

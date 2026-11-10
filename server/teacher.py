@@ -265,6 +265,8 @@ def edit_form(fid):
         "explanation_btn", "explanation_ph", "cb_deduct", "cb_calc_all", "cb_calc_partial", "cb_calc_deduct", "cb_calc_no_deduct",
         "cb_calc_none", "match_wrong_add", "match_wrong_ph", "match_hint_one", "draw_small", "draw_medium", "draw_large", "draw_xl",
         "partial_line", "sec_reading_ph", "option_n",
+        "tf_statement_n", "tf_add_statement", "tf_instruction_default", "tf_statements", "tf_pick_each", "warn_tf_items", "warn_tf_marks",
+        "tf_make_multi", "tf_total_auto", "blank_dir", "blank_dir_auto", "blank_dir_ar", "blank_dir_en", "blank_dir_num",
         "draw_on_image", "draw_on_image_note", "draw_need_image", "draw_on_image_hint", "change_image", "add_image",
         "n_incomplete_one",
         "n_incomplete",
@@ -686,7 +688,34 @@ def clean_question(raw, draft=False):
         elif isinstance(correct, int) and not isinstance(correct, bool) and 0 <= correct < len(opts):
             out["correct"] = correct
     elif kind == "truefalse":
-        out["correct"] = correct if correct in ("true", "false") else None
+        raw_opts = options if isinstance(options, dict) else None
+        if raw_opts is not None and isinstance(raw_opts.get("items"), list):
+            # several statements in one card, each with its own ✓ / ✗ and mark
+            texts = raw_opts["items"][:40]
+            marks = correct if isinstance(correct, list) else []
+            weights = raw_opts.get("item_points") if isinstance(raw_opts.get("item_points"), list) else []
+            rows = []
+            for i, item in enumerate(texts):
+                text_i = str(item or "").strip()[:500]
+                if not text_i:
+                    continue
+                mark = marks[i] if i < len(marks) and marks[i] in ("true", "false") else None
+                try:
+                    weight = max(0.0, min(100.0, round(float(weights[i]), 2))) if i < len(weights) else None
+                except (TypeError, ValueError):
+                    weight = None
+                rows.append((text_i, mark, weight))
+            if not rows:
+                fail(t("err_tf_items"))
+            out["options"] = {"items": [r[0] for r in rows]}
+            if not out["manual_grade"]:
+                keys = [r[1] for r in rows]
+                out["correct"] = keys if rows and all(keys) else (keys if any(keys) else None)
+                if rows and all(r[2] is not None for r in rows) and sum(r[2] for r in rows) > 0:
+                    out["options"]["item_points"] = [r[2] for r in rows]
+                    out["points"] = round(sum(r[2] for r in rows), 2)  # card mark = sum of the statements
+        else:
+            out["correct"] = correct if correct in ("true", "false") else None
     elif kind in ("short", "order"):
         answers = _str_list(correct, 30, 500)
         out["correct"] = answers or None
@@ -736,6 +765,9 @@ def clean_question(raw, draft=False):
 
 
         blanks = fill_blanks({"options": out["options"]})
+        dirs = raw_opts.get("blank_dirs")
+        if isinstance(dirs, list) and len(dirs) == len(blanks) and any(d in ("ltr", "rtl", "num") for d in dirs):
+            out["options"]["blank_dirs"] = [d if d in ("ltr", "rtl", "num") else "" for d in dirs]
         if not BLANK_RE.search(template):
             fail(t("err_fill_blanks"))
         weights = raw_opts.get("blank_points")
