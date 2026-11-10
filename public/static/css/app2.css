@@ -520,3 +520,22 @@ input[data-num] { font-variant-numeric: tabular-nums; }
 .app-ver { opacity: .55; font-size: .8em; margin-inline-start: .4rem; }
 .fill-bar .dir-seg button { padding: 0.2rem 0.6rem; font-size: 0.78rem; }
 .fill-bar .dir-seg button.on { background: var(--blue); }
+
+/* v2.9.5 */
+.count.bad { background: var(--red-soft); color: var(--red); }
+.class-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: auto; }
+.class-actions form { margin: 0; display: inline-flex; }
+.missed-note { display: flex; align-items: center; gap: 0.45rem; margin: 0.8rem 1rem 0.2rem; }
+/* sortable columns */
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--blue); }
+th.sortable:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.sort-arrow { display: inline-block; width: 0.9em; margin-inline-start: 0.3rem; opacity: 0.35; font-size: 0.8em; }
+.sort-arrow::after { content: "⇅"; }
+th[aria-sort="ascending"] .sort-arrow, th[aria-sort="descending"] .sort-arrow { opacity: 1; color: var(--blue); }
+th[aria-sort="ascending"] .sort-arrow::after { content: "▲"; }
+th[aria-sort="descending"] .sort-arrow::after { content: "▼"; }
+/* search while typing */
+form.searching .search-box svg { animation: spin 1s linear infinite; color: var(--blue); }
+.table .actions .act-group { justify-content: flex-end; flex-wrap: nowrap; }
+.class-actions { align-self: stretch; }

@@ -7,7 +7,7 @@
   <div>
     <a class="back" href="{{ url_for('admin.exams') if is_admin else url_for('teacher.dashboard') }}">← {{ t('nav_exams') if is_admin else t('nav_dashboard') }}</a>
     <h1>{{ form.title }}</h1>
-    <p class="muted">{{ t('submissions') }}{% if flt == 'all' %} · {{ t('n_submissions', n=rows|length) }}{% endif %}{% if running %} · {{ t('n_in_progress', n=running) }}{% endif %}{% if roster_size %} · {{ t('n_not_started', n=not_started|length) }}{% endif %}</p>
+    <p class="muted">{{ t('submissions') }}{% if flt == 'all' %} · {{ t('n_submissions', n=rows|length) }}{% endif %}{% if running %} · {{ t('n_in_progress', n=running) }}{% endif %}{% if roster_size %} · {{ t('n_missed' if ended else 'n_not_started', n=not_started|length) }}{% endif %}</p>
   </div>
   <div class="inline-actions">
     <a class="btn outline" href="{{ url_for('teacher.edit_form', fid=form.id) }}">{{ icon('edit', 16) }}<span class="hide-sm">{{ t('edit') }}</span></a>
@@ -29,7 +29,7 @@
   <a class="tab {{ 'on' if flt == key }}" href="{{ url_for('teacher.submissions', fid=form.id, filter=key) }}">{{ t('filter_' + key) }}</a>
   {% endfor %}
   <a class="tab {{ 'on' if flt == 'in_progress' }}" href="{{ url_for('teacher.submissions', fid=form.id, filter='in_progress') }}">{{ t('status_in_progress') }} <span class="count">{{ running }}</span></a>
-  <a class="tab {{ 'on' if flt == 'not_started' }}" href="{{ url_for('teacher.submissions', fid=form.id, filter='not_started') }}">{{ t('filter_not_started') }} <span class="count {{ 'warn' if not_started }}">{{ not_started|length }}</span></a>
+  <a class="tab {{ 'on' if flt == 'not_started' }}" href="{{ url_for('teacher.submissions', fid=form.id, filter='not_started') }}">{{ t('filter_missed' if ended else 'filter_not_started') }} <span class="count {{ ('bad' if ended else 'warn') if not_started }}">{{ not_started|length }}</span></a>
 </div>
 
 {% if flt == 'not_started' %}
@@ -37,8 +37,9 @@
     {% if not roster_size %}
       <div class="empty">{{ t('not_assigned_hint') }} <a href="{{ url_for('teacher.edit_form', fid=form.id) }}#settings">{{ t('assign_now') }}</a></div>
     {% elif not not_started %}
-      {{ empty(t('all_started')) }}
+      {{ empty(t('all_submitted') if ended else t('all_started')) }}
     {% else %}
+    {% if ended %}<div class="alert error missed-note">{{ icon('alert', 16) }} {{ t('missed_note', date=(form.closes_at | local_time) if form.closes_at else t('status_closed')) }}</div>{% endif %}
     <div class="table-wrap"><table class="table responsive">
       <thead><tr><th>#</th><th>{{ t('col_name') }}</th><th>{{ t('username') }}</th><th>{{ t('col_class') }}</th><th>{{ t('last_login') }}</th></tr></thead>
       <tbody>

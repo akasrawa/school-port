@@ -166,6 +166,7 @@ def dashboard():
     filtered = bool(q or status or class_id or subject or grade)
     waiting = not_started_summary(db, None if is_admin() else uid, 10000)
     stats["not_started"] = sum(len(w["waiting"]) for w in waiting)
+    stats["missed"] = sum(len(w["waiting"]) for w in not_started_summary(db, None if is_admin() else uid, 10000, ended=True))
     return render_template(
         "teacher/dashboard.html", forms=forms, stats=stats, recent=recent, q=q, status=status,
         class_id=class_id, subject=subject, grade=grade, classes=class_list, filtered=filtered,
@@ -1040,7 +1041,9 @@ def submissions(fid):
     db = get_db()
     flt = request.args.get("filter", "all")
     roster = _roster(db, fid)
-    not_started = [r for r in roster if not r["done"] and not r["running"]]
+    ended = exam_ended(form)
+    # after the exam period every assigned student without a submission missed it (an unfinished attempt included)
+    not_started = [r for r in roster if not r["done"] and (ended or not r["running"])]
     in_progress = db.execute(
         """SELECT a.*, u.username FROM attempts a LEFT JOIN users u ON u.id=a.user_id
            WHERE a.form_id=? AND a.is_preview=0 AND a.status='in_progress' ORDER BY a.started_at""",
@@ -1065,35 +1068,43 @@ def submissions(fid):
     owner = db.execute("SELECT name FROM users WHERE id=?", (form["teacher_id"],)).fetchone()
     return render_template(
         "teacher/submissions.html", form=form, rows=rows, flt=flt, running=len(in_progress), owner_name=owner["name"] if owner else "",
-        in_progress=in_progress, not_started=not_started, roster_size=len(roster),
+        in_progress=in_progress, not_started=not_started, roster_size=len(roster), ended=ended,
     )
 
 
-def not_started_summary(db, teacher_id=None, limit=12):
-    """Published, open exams with the number of assigned students who have not started yet."""
-    sql = "SELECT f.*, u.name AS teacher_name FROM forms f LEFT JOIN users u ON u.id=f.teacher_id WHERE f.status='published'"
+def exam_ended(form):
+    """The exam period is over: closed by the teacher, or past its closing time."""
+    return form["status"] == "closed" or bool(form["closes_at"] and form["closes_at"] < now())
+
+
+def not_started_summary(db, teacher_id=None, limit=12, ended=False):
+    """Open exams with the assigned students who have not started yet.
+    ended=True: exams whose period is over, with the assigned students who never submitted them."""
+    sql = "SELECT f.*, u.name AS teacher_name FROM forms f LEFT JOIN users u ON u.id=f.teacher_id WHERE "
+    sql += "f.status IN ('published','closed')" if ended else "f.status='published'"
     args = []
     if teacher_id:
         sql += " AND f.teacher_id=?"
         args.append(teacher_id)
-    stamp = now()
     out = []
     for form in db.execute(sql + " ORDER BY f.updated_at DESC", args).fetchall():
-        if form["closes_at"] and form["closes_at"] < stamp:
+        if exam_ended(form) != ended:
             continue
         roster = _roster(db, form["id"])
         if not roster:
             continue
-        waiting = [r for r in roster if not r["done"] and not r["running"]]
+        waiting = [r for r in roster if not r["done"] and (ended or not r["running"])]
         out.append({
             "form": form, "assigned": len(roster), "done": sum(1 for r in roster if r["done"]),
             "running": sum(1 for r in roster if r["running"]), "waiting": waiting,
         })
+    if ended:
+        out = [w for w in out if w["waiting"]]
     out.sort(key=lambda x: -len(x["waiting"]))
     return out[:limit]
 
 
-PEOPLE_KINDS = ("submissions", "pending", "not_started")
+PEOPLE_KINDS = ("submissions", "pending", "not_started", "missed")
 
 
 @bp.get("/students/<kind>")
@@ -1106,8 +1117,8 @@ def people(kind):
     teacher_id = None if is_admin() else g.user["id"]
     q = (request.args.get("q") or "").strip()
     rows, waiting = [], []
-    if kind == "not_started":
-        for w in not_started_summary(db, teacher_id, limit=10000):
+    if kind in ("not_started", "missed"):
+        for w in not_started_summary(db, teacher_id, limit=10000, ended=kind == "missed"):
             for s in w["waiting"]:
                 waiting.append({"student": s, "form": w["form"]})
         if q:
@@ -1142,8 +1153,9 @@ def _people_counts(db, teacher_id):
              FROM attempts a JOIN forms f ON f.id=a.form_id WHERE a.is_preview=0 AND a.status!='in_progress'"""
     row = db.execute(sql + (" AND f.teacher_id=?" if teacher_id else ""), (teacher_id,) if teacher_id else ()).fetchone()
     waiting = not_started_summary(db, teacher_id, limit=10000)
+    missed = not_started_summary(db, teacher_id, limit=10000, ended=True)
     return {"submissions": row["n"] or 0, "pending": row["p"] or 0,
-            "not_started": sum(len(w["waiting"]) for w in waiting)}
+            "not_started": sum(len(w["waiting"]) for w in waiting), "missed": sum(len(w["waiting"]) for w in missed)}
 
 
 @bp.post("/forms/<int:fid>/retake/<int:uid>")

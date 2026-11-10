@@ -120,8 +120,20 @@
         if (!menu.contains(event.target)) menu.removeAttribute("open");
       });
     });
-    /* "select all" checkboxes: <input type=checkbox data-check-all="name"> */
-    Array.prototype.forEach.call(document.querySelectorAll("[data-check-all]"), function (master) {
+    initChecks(document);
+    initSort(document);
+    initLiveSearch();
+    /* auto-submit selects inside filter forms */
+    Array.prototype.forEach.call(document.querySelectorAll("form[data-autosubmit] select"), function (sel) {
+      sel.addEventListener("change", function () { sel.form.submit(); });
+    });
+  });
+
+  /* "select all" checkboxes: <input type=checkbox data-check-all="name"> */
+  function initChecks(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("[data-check-all]"), function (master) {
+      if (master._bound) return;
+      master._bound = true;
       var name = master.getAttribute("data-check-all");
       var scope = master.closest("form") || document;
       function boxes() { return scope.querySelectorAll('input[type="checkbox"][name="' + name + '"]'); }
@@ -140,9 +152,104 @@
         });
         sync();
       });
-      scope.addEventListener("change", function (e) { if (e.target.name === name) sync(); });
+      if (!scope["_checks_" + name]) {
+        scope["_checks_" + name] = true;
+        scope.addEventListener("change", function (e) { if (e.target.name === name) sync(); });
+      }
       sync();
     });
+  }
+
+  /* ---------- sortable lists: click a column title to sort (▲ / ▼) ---------- */
+  function cellKey(td) {
+    var raw = (td.getAttribute("data-sort") || td.textContent || "").trim();
+    var text = raw.replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+      .replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); }).replace(/٫/g, ".");
+    var m = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ،,]+(\d{1,2}):(\d{2}))?/);  /* dd/mm/yyyy hh:mm */
+    if (m) return { n: +m[3] * 1e8 + +m[2] * 1e6 + +m[1] * 1e4 + (+m[4] || 0) * 100 + (+m[5] || 0) };
+    m = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/);
+    if (m) return { n: +m[1] * 1e8 + +m[2] * 1e6 + +m[3] * 1e4 + (+m[4] || 0) * 100 + (+m[5] || 0) };
+    m = text.match(/^-?\d+(?:\.\d+)?(?=\s*(?:%|\/|$|\s))/);
+    if (m) return { n: parseFloat(m[0]) };
+    return { s: text.toLowerCase() };
+  }
+  function initSort(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("table.table"), function (table) {
+      if (table._sortable || table.hasAttribute("data-nosort") || !table.tHead || !table.tBodies[0]) return;
+      var rows = table.tBodies[0].rows;
+      if (rows.length < 2) return;
+      table._sortable = true;
+      var heads = table.tHead.rows[0].cells;
+      Array.prototype.forEach.call(heads, function (th, col) {
+        var label = th.textContent.trim();
+        if (!label || label === "#" || th.querySelector("input")) return;
+        th.classList.add("sortable");
+        th.setAttribute("tabindex", "0");
+        th.setAttribute("aria-sort", "none");
+        var arrow = document.createElement("span");
+        arrow.className = "sort-arrow";
+        arrow.setAttribute("aria-hidden", "true");
+        th.appendChild(arrow);
+        function go() {
+          var dir = th.getAttribute("aria-sort") === "ascending" ? -1 : 1;
+          Array.prototype.forEach.call(heads, function (h) { if (h.hasAttribute("aria-sort")) h.setAttribute("aria-sort", "none"); });
+          th.setAttribute("aria-sort", dir === 1 ? "ascending" : "descending");
+          var body = table.tBodies[0];
+          var list = Array.prototype.slice.call(body.rows).map(function (tr, i) { return { tr: tr, i: i, k: tr.cells[col] ? cellKey(tr.cells[col]) : { s: "" } }; });
+          list.sort(function (a, b) {
+            var x = a.k, y = b.k, r;
+            if (x.n !== undefined && y.n !== undefined) r = x.n - y.n;
+            else if (x.n !== undefined) r = -1;
+            else if (y.n !== undefined) r = 1;
+            else r = (x.s || "").localeCompare(y.s || "", "ar");
+            return r * dir || a.i - b.i;
+          });
+          list.forEach(function (item) { body.appendChild(item.tr); });
+          /* keep a leading "#" column counting 1, 2, 3 */
+          if (heads[0] && heads[0].textContent.trim() === "#") {
+            Array.prototype.forEach.call(body.rows, function (tr, i) {
+              if (tr.cells[0]) tr.cells[0].textContent = window.Digits ? window.Digits.local(String(i + 1)) : String(i + 1);
+            });
+          }
+        }
+        th.addEventListener("click", function (e) { if (!e.target.closest("input, a, button")) go(); });
+        th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+      });
+    });
+  }
+
+  /* ---------- search while typing: <form data-live-search> refreshes the [data-live-target] parts ---------- */
+  function initLiveSearch() {
+    Array.prototype.forEach.call(document.querySelectorAll("form[data-live-search]"), function (form) {
+      var input = form.querySelector('input[type="search"], input[name="q"]');
+      if (!input) return;
+      var timer = null, seq = 0;
+      function run() {
+        var params = new URLSearchParams(new FormData(form));
+        var url = (form.getAttribute("action") || location.pathname) + "?" + params.toString();
+        var mine = ++seq;
+        form.classList.add("searching");
+        fetch(url, { credentials: "same-origin", headers: { "X-Requested-With": "live" } }).then(function (r) { return r.text(); }).then(function (html) {
+          if (mine !== seq) return;
+          var doc = new DOMParser().parseFromString(html, "text/html");
+          var fresh = doc.querySelectorAll("[data-live-target]");
+          Array.prototype.forEach.call(document.querySelectorAll("[data-live-target]"), function (el, i) {
+            if (!fresh[i]) return;
+            el.innerHTML = fresh[i].innerHTML;
+            initChecks(el);
+            initSort(el);
+          });
+          if (history.replaceState) history.replaceState(null, "", url);
+        }).catch(function () { /* the button still submits normally */ }).then(function () {
+          if (mine === seq) form.classList.remove("searching");
+        });
+      }
+      input.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(run, 300); });
+      form.addEventListener("submit", function (e) { e.preventDefault(); clearTimeout(timer); run(); });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
     /* live filter for long lists: <input data-filter="#selector-of-items"> */
     Array.prototype.forEach.call(document.querySelectorAll("[data-filter]"), function (input) {
       var items = document.querySelectorAll(input.getAttribute("data-filter"));
@@ -174,10 +281,6 @@
       for (var i = 0; i < 6; i += 1) out += chars[rnd[i] % chars.length];
       if (input) { input.value = out; input.type = "text"; input.focus(); }
     });
-    /* auto-submit selects inside filter forms */
-    Array.prototype.forEach.call(document.querySelectorAll("form[data-autosubmit] select"), function (sel) {
-      sel.addEventListener("change", function () { sel.form.submit(); });
-    });
   });
 
   document.addEventListener("click", function (event) {
@@ -192,7 +295,8 @@
     "submit",
     function (event) {
       var form = event.target;
-      var message = form.getAttribute && form.getAttribute("data-confirm");
+      var btn = event.submitter;
+      var message = (btn && btn.getAttribute && btn.getAttribute("data-confirm")) || (form.getAttribute && form.getAttribute("data-confirm"));
       if (message && !window.confirm(message)) event.preventDefault();
     },
     true

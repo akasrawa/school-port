@@ -342,7 +342,8 @@ def delete(uid):
     db.execute("DELETE FROM users WHERE id=?", (uid,))
     db.commit()
     flash(t("flash_deleted"), "success")
-    return redirect(url_for("users.index"))
+    back = request.args.get("back") or ""
+    return redirect(back if back.startswith("/users") and not back.startswith("//") else url_for("users.index"))
 
 
 @bp.post("/bulk-action")

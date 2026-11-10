@@ -26,7 +26,7 @@
 </div>
 {% endif %}
 
-<form class="card filter-bar" method="get" data-autosubmit>
+<form class="card filter-bar" method="get" data-autosubmit data-live-search>
   {% if is_admin %}<input type="hidden" name="role" value="{{ role or 'all' }}">{% endif %}
   <label class="search-box grow">{{ icon('search', 18) }}<input type="search" name="q" value="{{ q }}" placeholder="{{ t('search_users_ph') }}" aria-label="{{ t('search') }}"></label>
   {% if role != 'teacher' and role != 'admin' %}
@@ -43,7 +43,7 @@
   <button class="btn primary" type="submit">{{ icon('search', 16) }}<span class="hide-sm">{{ t('search') }}</span></button>
 </form>
 
-<form method="post" action="{{ url_for('users.bulk_action') }}" class="card table-card">
+<form method="post" action="{{ url_for('users.bulk_action') }}" class="card table-card" data-live-target>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if not rows %}{{ empty(t('no_users_found')) }}{% else %}
   <div class="bulk-bar" data-check-bar hidden>
@@ -76,7 +76,13 @@
         <td data-label="{{ t('col_class') }}">{{ u.class_names or '-' }}</td>
         <td data-label="{{ t('exams_taken') }}">{{ u.exams_taken if u.role == 'student' else '-' }}</td>
         <td data-label="{{ t('last_login') }}">{{ u.last_login | local_time if u.last_login else '-' }}</td>
-        <td class="actions"><a class="btn sm outline" href="{{ url_for('users.edit', uid=u.id) }}">{{ icon('edit', 14) }}{{ t('edit') }}</a></td>
+        <td class="actions"><div class="act-group">
+          <a class="act act-blue" href="{{ url_for('users.edit', uid=u.id) }}" data-tip="{{ t('edit') }}" aria-label="{{ t('edit') }} {{ u.name }}">{{ icon('edit', 16) }}</a>
+          {% if u.id != user.id and (is_admin or u.created_by == user.id) %}
+          <button class="act act-red" type="submit" formaction="{{ url_for('users.delete', uid=u.id, back=request.full_path) }}" formnovalidate
+                  data-confirm="{{ t('confirm_delete_user', name=u.name) }}" data-tip="{{ t('delete_user') }}" aria-label="{{ t('delete_user') }} {{ u.name }}">{{ icon('trash', 16) }}</button>
+          {% endif %}
+        </div></td>
       </tr>
     {% endfor %}
     </tbody>

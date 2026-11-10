@@ -69,6 +69,7 @@ def dashboard():
     last_backups = backups.list_backups()[:3]
     waiting = not_started_summary(db)
     stats["not_started"] = sum(len(w["waiting"]) for w in waiting)
+    stats["missed"] = sum(len(w["waiting"]) for w in not_started_summary(db, None, 10000, ended=True))
     return render_template(
         "admin/dashboard.html", stats=stats, teachers=teachers, recent=recent, last_backups=last_backups,
         waiting=waiting,

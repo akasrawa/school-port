@@ -623,4 +623,13 @@ EXTRA = {
     "blank_dir_en": ('English →', 'English →'),
     "blank_dir_num": ('Number 123', 'رقم ١٢٣'),
     "sentence_dir": ('Sentence direction', 'اتجاه الجملة'),
+    # v2.9.5
+    "filter_missed": ("Did not take it", "لم يقدّموا"),
+    "n_missed": ("{n} did not take it", "{n} لم يقدّم"),
+    "missed_note": ("The exam period is over ({date}). These students did not submit the exam.", "انتهت فترة الاختبار ({date}). هؤلاء الطلاب لم يقدّموا الاختبار."),
+    "all_submitted": ("Every assigned student submitted the exam.", "كل الطلاب المكلّفين قدّموا الاختبار."),
+    "exam_ended": ("ended", "انتهى"),
+    "delete_user": ("Delete user", "حذف المستخدم"),
+    "confirm_delete_user": ("Delete {name}? Their results are deleted too. This can't be undone.", "حذف {name}؟ تُحذف نتائجه أيضاً، ولا يمكن التراجع."),
+    "sort_by": ("Sort", "ترتيب"),
 }

@@ -31,7 +31,15 @@
       <span>{{ icon('file', 14) }}{{ t('n_exams', n=c.forms_count) }}</span>
     </div>
     <div class="code-box"><span class="muted small">{{ t('class_code') }}</span><code dir="ltr">{{ c.join_code }}</code></div>
-    <a class="btn outline sm" href="{{ url_for('teacher.class_detail', cid=c.id) }}">{{ t('open') }}</a>
+    <div class="class-actions">
+      <a class="btn outline sm" href="{{ url_for('teacher.class_detail', cid=c.id) }}">{{ t('open') }}</a>
+      {% if is_admin or c.teacher_id == user.id %}
+      <form method="post" action="{{ url_for('teacher.delete_class', cid=c.id) }}" data-confirm="{{ t('confirm_delete_class') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="act act-red" type="submit" data-tip="{{ t('delete_class') }}" aria-label="{{ t('delete_class') }} {{ c.name }}">{{ icon('trash', 16) }}</button>
+      </form>
+      {% endif %}
+    </div>
   </article>
   {% endfor %}
 </div>

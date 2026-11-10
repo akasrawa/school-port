@@ -14,8 +14,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=8">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app2.css') }}?v=8">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=9">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app2.css') }}?v=9">
   <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -91,7 +91,7 @@
   {% endblock %}
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="{{ url_for('static', filename='js/common.js') }}?v=3" defer></script>
+  <script src="{{ url_for('static', filename='js/common.js') }}?v=4" defer></script>
   <script src="{{ url_for('static', filename='js/math.js') }}?v=1" defer></script>
   <script src="{{ url_for('static', filename='js/digits.js') }}?v=5" defer></script>
   {% block scripts %}{% endblock %}

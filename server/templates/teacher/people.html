@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% from '_icons.html' import icon %}
 {% from '_macros.html' import attempt_status, score_pill, empty %}
-{% set titles = {'submissions': t('stat_submissions'), 'pending': t('stat_pending'), 'not_started': t('filter_not_started')} %}
+{% set titles = {'submissions': t('stat_submissions'), 'pending': t('stat_pending'), 'not_started': t('filter_not_started'), 'missed': t('filter_missed')} %}
 {% block title %}{{ titles[kind] }} · {{ t('app_name') }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -16,16 +16,17 @@
   <a class="tab {{ 'on' if kind == 'submissions' }}" href="{{ url_for('teacher.people', kind='submissions') }}">{{ t('stat_submissions') }} <span class="count">{{ counts.submissions }}</span></a>
   <a class="tab {{ 'on' if kind == 'pending' }}" href="{{ url_for('teacher.people', kind='pending') }}">{{ t('stat_pending') }} <span class="count {{ 'warn' if counts.pending }}">{{ counts.pending }}</span></a>
   <a class="tab {{ 'on' if kind == 'not_started' }}" href="{{ url_for('teacher.people', kind='not_started') }}">{{ t('filter_not_started') }} <span class="count {{ 'warn' if counts.not_started }}">{{ counts.not_started }}</span></a>
+  <a class="tab {{ 'on' if kind == 'missed' }}" href="{{ url_for('teacher.people', kind='missed') }}">{{ t('filter_missed') }} <span class="count {{ 'bad' if counts.missed }}">{{ counts.missed }}</span></a>
 </div>
 
-<form class="card filter-bar" method="get" role="search">
+<form class="card filter-bar" method="get" role="search" data-live-search>
   <label class="search-box grow">{{ icon('search', 18) }}<input type="search" name="q" value="{{ q }}" placeholder="{{ t('people_search_ph') }}" aria-label="{{ t('search') }}"></label>
   <button class="btn primary" type="submit">{{ icon('search', 16) }}<span class="hide-sm">{{ t('search') }}</span></button>
 </form>
 
-<div class="card table-card">
-{% if kind == 'not_started' %}
-  {% if not waiting %}{{ empty(t('all_started')) }}{% else %}
+<div class="card table-card" data-live-target>
+{% if kind in ('not_started', 'missed') %}
+  {% if not waiting %}{{ empty(t('all_submitted') if kind == 'missed' else t('all_started')) }}{% else %}
   <p class="muted small pad">{{ t('n_results', n=waiting|length) }}</p>
   <div class="table-wrap"><table class="table responsive">
     <thead><tr><th>#</th><th>{{ t('col_name') }}</th><th>{{ t('username') }}</th><th>{{ t('col_class') }}</th><th>{{ t('exam') }}</th>
@@ -37,7 +38,7 @@
         <td data-label="{{ t('col_name') }}"><b>{{ s.name }}</b></td>
         <td data-label="{{ t('username') }}"><code dir="auto">{{ s.username }}</code></td>
         <td data-label="{{ t('col_class') }}">{{ s.class_names or t('assigned_individually') }}</td>
-        <td data-label="{{ t('exam') }}"><a href="{{ url_for('teacher.submissions', fid=f.id, filter='not_started') }}" dir="auto">{{ f.title }}</a></td>
+        <td data-label="{{ t('exam') }}"><a href="{{ url_for('teacher.submissions', fid=f.id, filter='not_started') }}" dir="auto">{{ f.title }}</a>{% if kind == 'missed' %} <span class="badge red">{{ t('exam_ended') }}</span>{% endif %}</td>
         {% if is_admin %}<td data-label="{{ t('role_teacher') }}">{{ f.teacher_name or '-' }}</td>{% endif %}
         <td data-label="{{ t('closes_at') }}">{{ f.closes_at | local_time if f.closes_at else '-' }}</td>
         <td data-label="{{ t('last_login') }}">{{ s.last_login | local_time if s.last_login else t('never_logged_in') }}</td>
