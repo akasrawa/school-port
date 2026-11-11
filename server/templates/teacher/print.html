@@ -184,7 +184,7 @@
       {% elif q.type == 'truefalse' and q.options is mapping and q.options.get('items') %}
         <table class="tfl" dir="{{ qd }}">
           {% for item in q.options.get('items') %}{% set i = loop.index0 %}{% set sv = v[i] if attempt and v and i < v|length else none %}{% set kv = q.correct[i] if qkey and q.correct and i < q.correct|length else none %}
-          <tr><td class="tfn">{{ loop.index }}.</td><td class="tfs">{{ item | rich }}</td>
+          <tr><td class="tfn">{{ loop.index }}.</td><td class="tfs">{% if ex.item_images and i < ex.item_images|length and ex.item_images[i] %}<img class="oimg" src="{{ media_url(ex.item_images[i]) }}" alt=""> {% endif %}{{ item | rich }}</td>
             <td class="tfbox {{ ('ok' if sv == kv else 'bad') if attempt and qmark and kv }}">{{ '✓' if sv == 'true' else ('✗' if sv == 'false' else '') }}</td>
             {% if qkey and kv %}<td class="key-ans">{{ '✓' if kv == 'true' else '✗' }}</td>{% endif %}</tr>
           {% endfor %}

@@ -632,4 +632,6 @@ EXTRA = {
     "delete_user": ("Delete user", "حذف المستخدم"),
     "confirm_delete_user": ("Delete {name}? Their results are deleted too. This can't be undone.", "حذف {name}؟ تُحذف نتائجه أيضاً، ولا يمكن التراجع."),
     "sort_by": ("Sort", "ترتيب"),
+    "paste_image_hint": ("or paste a copied picture with Ctrl+V", "أو الصق صورة منسوخة بـ Ctrl+V"),
+    "image_pasted": ("Picture added", "تمت إضافة الصورة"),
 }

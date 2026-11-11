@@ -157,6 +157,11 @@
   /* keep statements, marks and points the same length */
   function tfSync(q) {
     var o = q.options, n = o.items.length;
+    if (Array.isArray(q.extra.item_images)) {
+      q.extra.item_images = q.extra.item_images.slice(0, n);
+      while (q.extra.item_images.length < n) q.extra.item_images.push("");
+      if (!q.extra.item_images.some(Boolean)) delete q.extra.item_images;
+    }
     if (!Array.isArray(o.item_points)) o.item_points = [];
     o.item_points = o.item_points.slice(0, n);
     while (o.item_points.length < n) o.item_points.push(1);
@@ -225,7 +230,7 @@
     if (type === "section") q.required = false;
     if (type === "truefalse") tfDefaults(q);
     if (type !== "checkbox") q.partial = false;
-    delete q.extra.option_images; delete q.extra.left_images; delete q.extra.right_images;
+    delete q.extra.option_images; delete q.extra.left_images; delete q.extra.right_images; delete q.extra.item_images;
   }
 
   function blanksOf(q) {
@@ -249,10 +254,10 @@
     if (q.type === "fill" && !blanksOf(q).length) return T.warn_add_blank;
     if (q.type === "order" && !(q.correct || []).length) return T.warn_add_answer;
     if (tfMulti(q)) {
-      var filledTf = q.options.items.filter(function (x) { return String(x).trim(); }).length;
-      if (!filledTf) return T.warn_tf_items;
+      var used = function (x, i) { return String(x).trim() || imgAt(q, "item_images", i); };
+      if (!q.options.items.some(used)) return T.warn_tf_items;
       if (q.manual_grade) return "";
-      return q.options.items.every(function (x, i) { return !String(x).trim() || (q.correct && (q.correct[i] === "true" || q.correct[i] === "false")); }) ? "" : T.warn_tf_marks;
+      return q.options.items.every(function (x, i) { return !used(x, i) || (q.correct && (q.correct[i] === "true" || q.correct[i] === "false")); }) ? "" : T.warn_tf_marks;
     }
     if (GRADED.indexOf(q.type) === -1 || q.manual_grade) return "";
     if (q.type === "fill") return blanksOf(q).every(function (b) { return altsOf(b).length; }) ? "" : T.warn_blank_answers;
@@ -405,13 +410,13 @@
     fields.appendChild(q._warn);
     fields.appendChild(textEditor(q));
     if (q.type === "section") {
-      var body = h("textarea", { rows: "4", class: "sec-body", maxlength: "6000", dir: q.extra.dir || "auto", placeholder: T.sec_reading_ph, "aria-label": T.section_body,
+      var body = h("textarea", { rows: "4", class: "sec-body", maxlength: "6000", "data-rt": "1", dir: q.extra.dir || "auto", placeholder: T.sec_reading_ph, "aria-label": T.section_body,
         oninput: function () { q.description = body.value; touch(q); } });
       body.value = q.description || "";
       fields.appendChild(body);
       fields.appendChild(h("p", { class: "q-hint", text: T.section_note }));
     } else {
-      var hintInput = h("input", { type: "text", maxlength: "1500", dir: q.extra.dir || "auto", placeholder: T.question_help, "aria-label": T.question_help,
+      var hintInput = h("input", { type: "text", maxlength: "1500", dir: q.extra.dir || "auto", placeholder: T.question_help, "aria-label": T.question_help, "data-rt": "1",
         value: q.description, oninput: function () { q.description = hintInput.value; touch(q); } });
       fields.appendChild(hintInput);
     }
@@ -445,7 +450,7 @@
           if (q._showExpl) { grow(explanation); explanation.focus(); }
         } });
       explBtn.querySelector("span").textContent = T.explanation_btn;
-      var explanation = h("textarea", { rows: "2", maxlength: "2000", dir: q.extra.dir || "auto", class: "expl-field",
+      var explanation = h("textarea", { rows: "2", maxlength: "2000", dir: q.extra.dir || "auto", class: "expl-field", "data-rt": "1",
         placeholder: T.explanation_ph, "aria-label": T.explanation, hidden: !q._showExpl,
         oninput: function () { q.explanation = explanation.value; explBtn.classList.toggle("on", !!explanation.value.trim()); touch(q); } });
       explanation.value = q.explanation || "";
@@ -501,6 +506,44 @@
   }
 
   /* ---------- question text: toolbar (B, U, formula, direction, picture, sound, recording, file) ---------- */
+  /* **bold** / __underline__ around the selection of an input / textarea, then let the field save itself */
+  function wrapField(el, mark) {
+    var s0 = el.selectionStart, e0 = el.selectionEnd, v = el.value;
+    el.value = v.slice(0, s0) + mark + v.slice(s0, e0) + mark + v.slice(e0);
+    el.focus();
+    el.setSelectionRange(s0 + mark.length, e0 + mark.length);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  /* the same inside the fill-in editor (contenteditable) */
+  function wrapEditable(ed, mark, range) {
+    var sel = window.getSelection();
+    var r = range || (sel.rangeCount ? sel.getRangeAt(0) : null);
+    if (!r || !ed.contains(r.commonAncestorContainer)) { r = document.createRange(); r.selectNodeContents(ed); r.collapse(false); }
+    var text = r.toString();
+    if (rangeHasChip(r)) return;
+    r.deleteContents();
+    var node = document.createTextNode(mark + text + mark);
+    r.insertNode(node);
+    var after = document.createRange();
+    after.setStart(node, mark.length + text.length);
+    after.collapse(true);
+    sel.removeAllRanges(); sel.addRange(after);
+    ed.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  /* picture, sound, recording and attached file of the question */
+  function mediaTools(q, tb, host) {
+    var imgInput = fileInput("image/*", function (f) { upload(f, f.name, null, function (res) { q.image = res.name; touch(q); render(); }); });
+    var audInput = fileInput("audio/*", function (f) { upload(f, f.name, null, function (res) { q.audio = res.name; touch(q); render(); }); });
+    var attInput = fileInput(".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv", function (f) {
+      upload(f, f.name, "attach", function (res) { q.extra.attachment = { name: res.name, label: res.label || f.name }; touch(q); render(); });
+    });
+    tb(icon("image", 15), (q.image ? T.change_image : T.add_image) + " · " + T.paste_image_hint, function () { imgInput.click(); });
+    tb(icon("music", 15), T.add_audio, function () { audInput.click(); });
+    var recBtn = tb(icon("mic", 15), T.record_audio, function () { record(q, recBtn); });
+    tb(icon("clip", 15), T.add_file, function () { attInput.click(); });
+    [imgInput, audInput, attInput].forEach(function (i) { host.appendChild(i); });
+  }
+
   function textEditor(q) {
     var box = h("div", { class: "text-box" });
     var area = h("textarea", { rows: "1", maxlength: "1500", dir: q.extra.dir || "auto", "data-q-text": "1",
@@ -508,14 +551,6 @@
       oninput: function () { q.text = area.value; area.classList.remove("invalid"); touch(q); } });
     area.value = q.text;
 
-    function wrap(mark) {
-      var s = area.selectionStart, e = area.selectionEnd, v = area.value;
-      var sel = v.slice(s, e);
-      area.value = v.slice(0, s) + mark + sel + mark + v.slice(e);
-      area.focus();
-      area.setSelectionRange(s + mark.length, e + mark.length);
-      q.text = area.value; touch(q);
-    }
     function setDir(dir) {
       q.extra.dir = q.extra.dir === dir ? "" : dir;
       if (!q.extra.dir) delete q.extra.dir;
@@ -528,25 +563,16 @@
       bar.appendChild(b);
       return b;
     }
-    tb("<b>B</b>", T.fmt_bold, function () { wrap("**"); });
-    tb("<u>U</u>", T.fmt_underline, function () { wrap("__"); });
+    tb("<b>B</b>", T.fmt_bold, function () { wrapField(area, "**"); });
+    tb("<u>U</u>", T.fmt_underline, function () { wrapField(area, "__"); });
     tb("√x", T.fmt_math, function (e) { openMath(e.currentTarget, area, q); }, "math");
     bar.appendChild(h("span", { class: "fmt-sep" }));
     tb("ع ←", T.dir_rtl, function () { setDir("rtl"); }, "dir" + (q.extra.dir === "rtl" ? " on" : ""));
     tb("EN →", T.dir_ltr, function () { setDir("ltr"); }, "dir" + (q.extra.dir === "ltr" ? " on" : ""));
     bar.appendChild(h("span", { class: "fmt-sep" }));
-    var imgInput = fileInput("image/*", function (f) { upload(f, f.name, null, function (res) { q.image = res.name; touch(q); render(); }); });
-    var audInput = fileInput("audio/*", function (f) { upload(f, f.name, null, function (res) { q.audio = res.name; touch(q); render(); }); });
-    var attInput = fileInput(".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv", function (f) {
-      upload(f, f.name, "attach", function (res) { q.extra.attachment = { name: res.name, label: res.label || f.name }; touch(q); render(); });
-    });
-    tb(icon("image", 15), q.image ? T.change_image : T.add_image, function () { imgInput.click(); });
-    tb(icon("music", 15), T.add_audio, function () { audInput.click(); });
-    var recBtn = tb(icon("mic", 15), T.record_audio, function () { record(q, recBtn); });
-    tb(icon("clip", 15), T.add_file, function () { attInput.click(); });
+    mediaTools(q, tb, box);
     box.appendChild(bar);
     box.appendChild(area);
-    [imgInput, audInput, attInput].forEach(function (i) { box.appendChild(i); });
 
     var strip = h("div", { class: "media-strip" });
     if (q.image && !(q.type === "draw" && q.options && q.options.on_image)) strip.appendChild(h("span", { class: "media-item" }, [
@@ -607,9 +633,10 @@
   /* ---------- LaTeX formula box ---------- */
   var mathPop = null;
   function closePop() { if (mathPop) { mathPop.remove(); mathPop = null; } }
-  function openMath(anchor, target, q) {
+  function openMath(anchor, target, q, ceRange) {
     closePop();
-    var start = target.selectionStart, end = target.selectionEnd;
+    var ce = !!target.isContentEditable;
+    var start = ce ? 0 : target.selectionStart, end = ce ? 0 : target.selectionEnd;
     var input = h("input", { type: "text", dir: "ltr", class: "math-input", placeholder: "F = m \\cdot a", spellcheck: "false" });
     var out = h("div", { class: "math-out", dir: "ltr" });
     function draw() {
@@ -631,13 +658,20 @@
       var v = input.value.trim();
       if (!v) { closePop(); return; }
       var snippet = "\\( " + v + " \\)";
+      closePop();
+      if (ce) {
+        var r = ceRange && target.contains(ceRange.commonAncestorContainer) ? ceRange : null;
+        if (!r) { r = document.createRange(); r.selectNodeContents(target); r.collapse(false); }
+        r.deleteContents();
+        r.insertNode(document.createTextNode(snippet));
+        target.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
       var val = target.value;
       target.value = val.slice(0, start) + snippet + val.slice(end);
-      q.text = target.value;
-      closePop();
       target.focus();
       target.setSelectionRange(start + snippet.length, start + snippet.length);
-      touch(q);
+      target.dispatchEvent(new Event("input", { bubbles: true }));
     } });
     mathPop = h("div", { class: "pop math-pop", role: "dialog", "aria-label": T.fmt_math }, [
       h("b", { text: T.math_title }), input, out, quick,
@@ -683,7 +717,7 @@
           touch(q); render();
         } });
       pick.checked = checked;
-      var input = h("input", { type: "text", maxlength: "300", value: shown(text), placeholder: fmt(T.option_n, { n: index + 1 }),
+      var input = h("input", { type: "text", maxlength: "300", value: shown(text), placeholder: fmt(T.option_n, { n: index + 1 }), "data-rt": "1",
         dir: q.extra.dir || "auto", "data-opt": index,
         oninput: function () { q.options[index] = input.value; touch(q); },
         onkeydown: function (event) {
@@ -705,6 +739,7 @@
           q._undoMsg = fmt(T.pasted_n, { n: rows.length });
           touch(q); render();
         } });
+      if (q.type !== "dropdown") input._img = function (name) { setImg(q, "option_images", index, name, q.options.length); touch(q); render(); };
       var mark = manual ? h("span", { class: "opt-letter", "aria-hidden": "true", text: letter(index) }) : pick;
       line.appendChild(mark);
       line.appendChild(input);
@@ -846,13 +881,21 @@
           rowsIn.forEach(function (r, k) {
             var at = i + k;
             if (at < o.items.length && (k === 0 || !String(o.items[at]).trim())) o.items[at] = r;
-            else { o.items.splice(at, 0, r); o.item_points.splice(at, 0, 1); if (Array.isArray(q.correct)) q.correct.splice(at, 0, null); }
+            else { o.items.splice(at, 0, r); o.item_points.splice(at, 0, 1); if (Array.isArray(q.correct)) q.correct.splice(at, 0, null); if (q.extra.item_images) q.extra.item_images.splice(at, 0, ""); }
           });
           o.items = o.items.slice(0, 40);
           touch(q); render();
         } });
-      input.value = text;
+      input.value = shown(text);
+      input._img = function (name) { setImg(q, "item_images", i, name, o.items.length); touch(q); render(); };
+      input.setAttribute("data-rt", "1");
+      var pic = imgAt(q, "item_images", i);
+      if (pic) row.appendChild(h("span", { class: "opt-img" }, [h("img", { src: media(pic), alt: "" }),
+        h("button", { type: "button", class: "img-x", title: T.remove_image, html: icon("x", 12), onclick: function () { setImg(q, "item_images", i, "", o.items.length); touch(q); render(); } })]));
       row.appendChild(input);
+      var picker = fileInput("image/*", function (f) { upload(f, f.name, null, function (res) { input._img(res.name); }); });
+      row.appendChild(picker);
+      row.appendChild(iconButton("image", T.option_image + " · " + T.paste_image_hint, function () { picker.click(); }, { extraClass: "ghosty" }));
       if (!manual) {
         var picks = h("span", { class: "tfm-picks", role: "radiogroup", "aria-label": T.correct_answer });
         [["true", "✓", "yes"], ["false", "✗", "no"]].forEach(function (m) {
@@ -873,6 +916,7 @@
         onclick: function () {
           if (o.items.length <= 1) return;
           o.items.splice(i, 1); o.item_points.splice(i, 1); if (Array.isArray(q.correct)) q.correct.splice(i, 1);
+          if (q.extra.item_images) q.extra.item_images.splice(i, 1);
           touch(q); render();
         } }));
       list.appendChild(row);
@@ -887,6 +931,7 @@
     if (o.items.length >= 40) return;
     o.items.splice(at, 0, ""); o.item_points.splice(at, 0, 1);
     if (Array.isArray(q.correct)) q.correct.splice(at, 0, null);
+    if (q.extra.item_images) q.extra.item_images.splice(at, 0, "");
     pendingFocus = { q: q, opt: at };
     touch(q); render();
   }
@@ -995,9 +1040,10 @@
         if (img) cell.appendChild(h("span", { class: "opt-img" }, [h("img", { src: media(img), alt: "" }),
           h("button", { type: "button", class: "img-x", title: T.remove_image, html: icon("x", 12), onclick: function () { setImg(q, key, index, "", size); touch(q); render(); } })]));
         else cell.appendChild(iconButton("image", T.option_image, function () { picker.click(); }, { extraClass: "ghosty" }));
-        var input = h("input", { type: "text", maxlength: "300", value: shown(pair[k]), placeholder: ph, dir: q.extra.dir || "auto", "data-opt": k ? null : index,
+        var input = h("input", { type: "text", maxlength: "300", value: shown(pair[k]), placeholder: ph, dir: q.extra.dir || "auto", "data-opt": k ? null : index, "data-rt": "1",
           oninput: function () { pair[k] = input.value; touch(q); },
           onkeydown: function (event) { if (k && event.key === "Enter" && !event.isComposing) { event.preventDefault(); addPair(q); } } });
+        input._img = function (name) { setImg(q, key, index, name, size); touch(q); render(); };
         cell.appendChild(input);
         cell.appendChild(picker);
         return cell;
@@ -1047,6 +1093,76 @@
   }
 
   /* ---------- fill in the blanks ---------- */
+  /* ---------- small toolbar above every text field of a question: B, U, formula, picture ---------- */
+  var fieldBar = h("div", { class: "field-bar", role: "toolbar", "aria-label": T.format_bar, hidden: true });
+  var fieldTarget = null;
+  var fieldPick = fileInput("image/*", function (f) {
+    var el = fieldTarget;
+    if (el && el._img) upload(f, f.name, null, function (res) { el._img(res.name); });
+  });
+  function fbtn(html, label, fn, cls) {
+    var b = h("button", { type: "button", class: "fmt " + (cls || ""), title: label, "aria-label": label, html: html,
+      onmousedown: function (e) { e.preventDefault(); }, onclick: function (e) { if (fieldTarget) fn(e); } });
+    fieldBar.appendChild(b);
+    return b;
+  }
+  fbtn("<b>B</b>", T.fmt_bold, function () { wrapField(fieldTarget, "**"); });
+  fbtn("<u>U</u>", T.fmt_underline, function () { wrapField(fieldTarget, "__"); });
+  fbtn("√x", T.fmt_math, function (e) { var q = cardQ(fieldTarget); if (q) openMath(e.currentTarget, fieldTarget, q); }, "math");
+  var fieldSep = h("span", { class: "fmt-sep" });
+  fieldBar.appendChild(fieldSep);
+  var fieldImg = fbtn(icon("image", 15), T.option_image + " · " + T.paste_image_hint, function () { fieldPick.click(); });
+  fieldBar.appendChild(fieldPick);
+  document.body.appendChild(fieldBar);
+  function cardQ(el) {
+    var card = el && el.closest && el.closest(".qcard");
+    var i = card ? parseInt(card.getAttribute("data-index"), 10) : NaN;
+    return isNaN(i) ? null : questions[i];
+  }
+  function placeFieldBar() {
+    if (!fieldTarget || !fieldTarget.isConnected) { fieldBar.hidden = true; return; }
+    var r = fieldTarget.getBoundingClientRect();
+    fieldBar.hidden = false;
+    var rtl = getComputedStyle(fieldTarget).direction === "rtl";
+    var left = rtl ? r.right - fieldBar.offsetWidth : r.left;
+    fieldBar.style.top = (window.scrollY + r.top - fieldBar.offsetHeight - 4) + "px";
+    fieldBar.style.left = Math.max(4, window.scrollX + left) + "px";
+  }
+  list.addEventListener("focusin", function (e) {
+    var el = e.target;
+    if (!el.matches || !el.matches("[data-rt]")) return;
+    fieldTarget = el;
+    var canImg = !!el._img;
+    fieldImg.hidden = !canImg; fieldSep.hidden = !canImg;
+    placeFieldBar();
+  });
+  list.addEventListener("focusout", function (e) {
+    if (e.target === fieldTarget) setTimeout(function () { if (document.activeElement !== fieldTarget && !(mathPop && mathPop.contains(document.activeElement))) { fieldBar.hidden = true; } }, 120);
+  });
+  window.addEventListener("scroll", function () { if (!fieldBar.hidden) placeFieldBar(); }, { passive: true });
+  window.addEventListener("resize", function () { if (!fieldBar.hidden) placeFieldBar(); });
+
+  /* paste a copied picture (Ctrl+V): into the option / statement / matching cell being edited, else into the question */
+  function pastedImage(e) {
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i += 1) {
+      if (items[i].kind === "file" && /^image\//.test(items[i].type)) return items[i].getAsFile();
+    }
+    return null;
+  }
+  list.addEventListener("paste", function (e) {
+    var file = pastedImage(e);
+    if (!file) return;
+    var el = e.target;
+    var q = cardQ(el);
+    if (!q) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var name = "pasted." + ((file.type.split("/")[1] || "png").replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "png");
+    var setter = el && el._img ? el._img : function (n) { q.image = n; touch(q); render(); };
+    upload(file, name, null, function (res) { setter(res.name); toast(T.image_pasted); });
+  }, true);
+
   var floatBtn = h("button", { type: "button", class: "float-blank", hidden: true, html: icon("blank", 14) + "<span></span>" });
   floatBtn.querySelector("span").textContent = T.make_blank;
   floatBtn.addEventListener("mousedown", function (e) { e.preventDefault(); });
@@ -1138,6 +1254,22 @@
       role: "textbox", "aria-multiline": "true", "aria-label": T.fill_template, "data-placeholder": manual ? T.fill_ph_manual : T.fill_ph_auto });
     var ctx = { q: q, ed: ed, range: null };
     ed._fill = ctx;
+    /* the question toolbar, for the sentence: B, U, formula, picture, sound, recording, file */
+    var fillFmt = h("div", { class: "fmt-bar fill-fmt", role: "toolbar", "aria-label": T.format_bar });
+    var lastRange = null;
+    ed.addEventListener("keyup", function () { var sl = window.getSelection(); if (sl.rangeCount && ed.contains(sl.anchorNode)) lastRange = sl.getRangeAt(0).cloneRange(); });
+    ed.addEventListener("mouseup", function () { var sl = window.getSelection(); if (sl.rangeCount && ed.contains(sl.anchorNode)) lastRange = sl.getRangeAt(0).cloneRange(); });
+    function ftb(html, label, fn, cls) {
+      var b = h("button", { type: "button", class: "fmt " + (cls || ""), title: label, "aria-label": label, html: html,
+        onmousedown: function (e) { e.preventDefault(); }, onclick: fn });
+      fillFmt.appendChild(b);
+      return b;
+    }
+    ftb("<b>B</b>", T.fmt_bold, function () { wrapEditable(ed, "**", lastRange); });
+    ftb("<u>U</u>", T.fmt_underline, function () { wrapEditable(ed, "__", lastRange); });
+    ftb("√x", T.fmt_math, function (e) { openMath(e.currentTarget, ed, q, lastRange); }, "math");
+    fillFmt.appendChild(h("span", { class: "fmt-sep" }));
+    mediaTools(q, ftb, fillFmt);
     /* direction of the whole sentence (same setting as the ع ← / EN → buttons of the question text) */
     var sentenceDir = h("div", { class: "seg dir-seg", role: "radiogroup", title: T.sentence_dir, "aria-label": T.sentence_dir });
     [["", T.blank_dir_auto], ["rtl", T.blank_dir_ar], ["ltr", T.blank_dir_en]].forEach(function (x) {
@@ -1304,7 +1436,8 @@
       ctx.makeBtn = action;
     }
     var edBox = h("div", { class: "fill-box" }, [
-      h("div", { class: "fill-bar" }, [action, h("small", { class: "muted", text: manual ? T.insert_blank_hint : T.make_blank_hint }), h("span", { class: "spacer" }), sentenceDir]), ed]);
+      h("div", { class: "fill-bar" }, [action, h("small", { class: "muted", text: manual ? T.insert_blank_hint : T.make_blank_hint }), h("span", { class: "spacer" }), sentenceDir]),
+      fillFmt, ed]);
 
     var rowsBox = h("div", { class: "blank-rows" });
     function dirSelect(i) {
@@ -1717,9 +1850,10 @@
     if (tfMulti(q)) {
       var vals = Array.isArray(v) ? v : [], k = -1;
       return '<div class="pv-tfl"' + d + ">" + q.options.items.map(function (it, n) {
-        if (!String(it).trim()) return '<div class="pv-tfr ghost"><span class="pv-tfn">' + (n + 1) + "</span><span>" + esc(fmt(T.tf_statement_n, { n: n + 1 })) + "</span></div>";
+        var pic = imgAt(q, "item_images", n);
+        if (!String(it).trim() && !pic) return '<div class="pv-tfr ghost"><span class="pv-tfn">' + (n + 1) + "</span><span>" + esc(fmt(T.tf_statement_n, { n: n + 1 })) + "</span></div>";
         k += 1;
-        return '<div class="pv-tfr"><span class="pv-tfn">' + (n + 1) + "</span><span class=\"pv-tfs\">" + rich(it) + "</span>" +
+        return '<div class="pv-tfr"><span class="pv-tfn">' + (n + 1) + "</span>" + (pic ? '<img class="pv-tfimg" src="' + esc(media(pic)) + '" alt="">' : "") + "<span class=\"pv-tfs\">" + rich(shown(it)) + "</span>" +
           ["true", "false"].map(function (val) {
             return '<label class="pv-tfp ' + (val === "true" ? "yes" : "no") + '"><input type="radio" name="pv-tf' + k + '" data-k="tfm" data-i="' + k + '" value="' + val + '"' + (vals[k] === val ? " checked" : "") + "><span>" + (val === "true" ? "✓" : "✗") + "</span></label>";
           }).join("") + "</div>";
@@ -1896,7 +2030,8 @@
       }).join("");
     }
     if (tfMulti(q)) return '<div class="pv-tfl"' + d + ">" + q.options.items.map(function (it, n) {
-      return '<div class="pv-tfr' + (String(it).trim() ? "" : " ghost") + '"><span class="pv-tfn">' + (n + 1) + "</span><span class=\"pv-tfs\">" + (String(it).trim() ? rich(it) : esc(fmt(T.tf_statement_n, { n: n + 1 }))) + '</span><span class="pv-tfp yes"><span>✓</span></span><span class="pv-tfp no"><span>✗</span></span></div>';
+      var pic = imgAt(q, "item_images", n), used = String(it).trim() || pic;
+      return '<div class="pv-tfr' + (used ? "" : " ghost") + '"><span class="pv-tfn">' + (n + 1) + "</span>" + (pic ? '<img class="pv-tfimg" src="' + esc(media(pic)) + '" alt="">' : "") + "<span class=\"pv-tfs\">" + (used ? rich(shown(it)) : esc(fmt(T.tf_statement_n, { n: n + 1 }))) + '</span><span class="pv-tfp yes"><span>✓</span></span><span class="pv-tfp no"><span>✗</span></span></div>';
     }).join("") + "</div>";
     if (q.type === "truefalse") return ["true", "false"].map(function (v) { return '<div class="pv-opt"><span class="pv-mark"></span><span>' + esc(T[v]) + "</span></div>"; }).join("");
     if (q.type === "short" || q.type === "number" || q.type === "date") return '<div class="pv-input"' + d + ">" + esc(q.type === "date" ? "yyyy-mm-dd" : T.your_answer) + "</div>";
@@ -2281,9 +2416,15 @@
         if (q.extra.dir) extra.dir = q.extra.dir;
         if (q.extra.attachment) extra.attachment = q.extra.attachment;
         if (q.type === "checkbox" && q.partial && q.extra.cb_deduct === false) extra.cb_deduct = false;
+        if (tfMulti(q) && q.extra.item_images && q.extra.item_images.some(Boolean)) extra.item_images = q.extra.item_images.slice();
         var out = { id: q.id, type: q.type, text: q.text, description: q.description, image: q.image || "", audio: q.audio || "", points: q.points,
           required: !!q.required, explanation: q.explanation, partial: !!q.partial, manual_grade: !!q.manual_grade,
           options: q.options, correct: q.correct, extra: extra };
+        if (tfMulti(q) && extra.item_images) {
+          out.options = Object.assign({}, q.options, { items: q.options.items.map(function (it, i) {
+            return String(it).trim() || !extra.item_images[i] ? it : INV;  /* picture-only statement */
+          }) });
+        }
         if (q.type === "match") {
           var pairs = [], li = [], ri = [], used = {};
           (q.options.pairs || []).forEach(function (p, i) {

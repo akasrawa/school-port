@@ -16,7 +16,7 @@ from .utils import fmt_num, jl, pct, safe_next
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-APP_VERSION = "2.9.5"  # shown in the footer: tells at a glance which version is deployed
+APP_VERSION = "2.9.6"  # shown in the footer: tells at a glance which version is deployed
 SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("SERVERLESS"))
 
 

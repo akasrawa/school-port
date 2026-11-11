@@ -539,3 +539,12 @@ th[aria-sort="descending"] .sort-arrow::after { content: "▼"; }
 form.searching .search-box svg { animation: spin 1s linear infinite; color: var(--blue); }
 .table .actions .act-group { justify-content: flex-end; flex-wrap: nowrap; }
 .class-actions { align-self: stretch; }
+
+/* v2.9.6: toolbar on every text field, fill toolbar, statement pictures */
+.field-bar { position: absolute; z-index: 65; display: flex; align-items: center; gap: 2px; padding: 2px 4px; background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12); }
+.field-bar[hidden], .field-bar [hidden] { display: none !important; }
+.field-bar .fmt { height: 28px; min-width: 30px; }
+.builder .qcard .fill-box .fill-fmt { display: flex; position: static; box-shadow: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: #F8FAFC; padding: 2px 6px; margin: 0; flex-wrap: wrap; }
+.tfm-row .opt-img img { height: 36px; max-width: 60px; }
+.tf-img { flex: none; max-height: 110px; max-width: 170px; border-radius: 8px; object-fit: contain; }
+.pv-tfimg { flex: none; max-height: 36px; max-width: 56px; border-radius: 6px; }

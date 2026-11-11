@@ -268,6 +268,7 @@ def edit_form(fid):
         "partial_line", "sec_reading_ph", "option_n",
         "tf_statement_n", "tf_add_statement", "tf_instruction_default", "tf_statements", "tf_pick_each", "warn_tf_items", "warn_tf_marks",
         "tf_make_multi", "tf_total_auto", "blank_dir", "sentence_dir", "blank_dir_auto", "blank_dir_ar", "blank_dir_en", "blank_dir_num",
+        "paste_image_hint", "image_pasted",
         "draw_on_image", "draw_on_image_note", "draw_need_image", "draw_on_image_hint", "change_image", "add_image",
         "n_incomplete_one",
         "n_incomplete",
@@ -641,6 +642,7 @@ def clean_question(raw, draft=False):
     and extra.incomplete holds the reason. Unfinished questions are hidden from students and block publishing.
     """
     problems = []
+    tf_kept = []
 
     def fail(message):
         if not draft:
@@ -705,10 +707,11 @@ def clean_question(raw, draft=False):
                     weight = max(0.0, min(100.0, round(float(weights[i]), 2))) if i < len(weights) else None
                 except (TypeError, ValueError):
                     weight = None
-                rows.append((text_i, mark, weight))
+                rows.append((text_i, mark, weight, i))
             if not rows:
                 fail(t("err_tf_items"))
             out["options"] = {"items": [r[0] for r in rows]}
+            tf_kept = [r[3] for r in rows]
             if not out["manual_grade"]:
                 keys = [r[1] for r in rows]
                 out["correct"] = keys if rows and all(keys) else (keys if any(keys) else None)
@@ -781,6 +784,13 @@ def clean_question(raw, draft=False):
                 out["options"]["blank_points"] = weights
                 out["points"] = round(sum(weights), 2)  # question mark = sum of the blanks
     out["extra"] = _clean_extra(raw.get("extra"), kind, out)
+    if kind == "truefalse" and isinstance(out["options"], dict):
+        # a picture beside each statement (optional), kept in step with the statements that were kept
+        raw_imgs = (raw.get("extra") or {}).get("item_images") if isinstance(raw.get("extra"), dict) else None
+        if isinstance(raw_imgs, list):
+            imgs = [(_clean_image(raw_imgs[i]) or "") if i < len(raw_imgs) else "" for i in tf_kept]
+            if any(imgs):
+                out["extra"] = dict(out["extra"] or {}, item_images=imgs)
     if problems:
         out["extra"] = dict(out["extra"] or {}, incomplete=problems[0])
     return out

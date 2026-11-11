@@ -82,6 +82,8 @@
           {% for item in q.options.get('items') %}{% set iv = v[loop.index0] if v and loop.index0 < v|length else none %}
           <div class="tf-item" role="radiogroup" aria-label="{{ loop.index }}. {{ item | plain }}">
             <span class="tf-n">{{ loop.index }}</span>
+            {% set tpic = (ex.item_images or [])[loop.index0] if ex.item_images and loop.index0 < ex.item_images|length else '' %}
+            {% if tpic %}<img class="tf-img" src="{{ media_url(tpic) }}" alt="" loading="lazy">{% endif %}
             <span class="tf-s">{{ item | rich }}</span>
             <span class="tf-picks">
               <label class="tf-pick yes" title="{{ t('true') }}"><input type="radio" name="q{{ q.id }}_{{ loop.index0 }}" value="true" data-tf="{{ loop.index0 }}" {{ 'checked' if iv == 'true' }} aria-label="{{ t('true') }}"><span>✓</span></label>
